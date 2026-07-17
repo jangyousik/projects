@@ -1,0 +1,2464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#C0392B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="하노이 여행">
+<title>🇻🇳 하노이 가족여행</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+  :root {
+    --red: #C0392B;
+    --red-light: #E74C3C;
+    --gold: #F39C12;
+    --gold-light: #F9CA24;
+    --navy: #1B3A6B;
+    --navy-light: #2E5FA3;
+    --bg: #FDF8F3;
+    --card: #FFFFFF;
+    --text: #2C2C2C;
+    --muted: #7F8C8D;
+    --border: #ECE0D5;
+    --cash: #27AE60;
+    --card-pay: #2980B9;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+
+  .app-home-link {
+    position: fixed;
+    right: 14px;
+    bottom: 82px;
+    z-index: 200;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #1B3A6B;
+    color: white;
+    text-decoration: none;
+    font-size: 20px;
+    box-shadow: 0 5px 16px rgba(27, 58, 107, 0.35);
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, var(--red) 0%, #8B1A1A 100%);
+    color: white;
+    padding: 20px 16px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(192,57,43,0.4);
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .header h1 { font-size: 18px; font-weight: 900; letter-spacing: -0.5px; }
+  .header-sub { font-size: 12px; opacity: 0.85; }
+  .exchange-badge {
+    background: rgba(255,255,255,0.2);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* DAY TABS */
+  .day-tabs {
+    display: flex;
+    background: white;
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 95px;
+    z-index: 99;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .day-tabs::-webkit-scrollbar { display: none; }
+  .day-tab {
+    flex: 1;
+    min-width: 80px;
+    padding: 10px 8px;
+    text-align: center;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .day-tab.active {
+    color: var(--red);
+    border-bottom-color: var(--red);
+    font-weight: 700;
+  }
+  .day-tab .day-num { font-size: 16px; font-weight: 900; display: block; }
+  .day-tab .day-label { font-size: 10px; }
+
+  /* CONTENT */
+  .content { padding: 12px 16px; }
+
+  .day-section { display: none; }
+  .day-section.active { display: block; }
+  .day-section.active, .budget-page.active, .info-page.active {
+    animation: page-enter .32s cubic-bezier(.2,.8,.2,1) both;
+  }
+
+  .day-title {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .day-title span { opacity: 0.8; font-weight: 400; font-size: 11px; display: block; margin-top: 2px; }
+
+  /* SCHEDULE ITEM */
+  .schedule-item {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .schedule-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 35px;
+    top: 42px;
+    bottom: -8px;
+    width: 2px;
+    background: var(--border);
+  }
+
+  .time-col {
+    width: 52px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-top: 14px;
+  }
+  .time-col .time { font-size: 12px; font-weight: 700; color: var(--red); }
+  .time-col .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--red);
+    margin: 4px 0 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+  .time-col .dot.gold { background: var(--gold); }
+  .time-col .dot.navy { background: var(--navy); }
+  .time-col .dot.green { background: var(--cash); }
+
+  .card {
+    flex: 1;
+    background: var(--card);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border: 1px solid var(--border);
+  }
+  .card.highlight {
+    border-left: 3px solid var(--gold);
+  }
+  .card.hotel {
+    border-left: 3px solid var(--navy);
+    background: linear-gradient(135deg, #F8F9FF 0%, white 100%);
+  }
+  .card.flight {
+    border-left: 3px solid var(--red);
+    background: linear-gradient(135deg, #FFF8F8 0%, white 100%);
+  }
+  .card.warning {
+    border-left: 3px solid #E67E22;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .card-category {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .card-title { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.3; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .card-menu {
+    background: #FFF9F0;
+    border: 1px solid #F5DDB3;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 8px 0;
+    font-size: 12px;
+    color: #7D4E00;
+  }
+  .card-menu .menu-label { font-weight: 700; font-size: 10px; color: var(--gold); margin-bottom: 3px; }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    gap: 8px;
+  }
+  .price-tag {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--red);
+  }
+  .price-krw { font-size: 10px; color: var(--muted); font-weight: 500; }
+  .pay-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+  }
+  .pay-badge.cash { background: #D5F5E3; color: var(--cash); }
+  .pay-badge.card { background: #D6EAF8; color: var(--card-pay); }
+  .pay-badge.done { background: #EBF5FB; color: var(--navy); }
+
+  .map-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--navy);
+    color: white;
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 20px;
+    transition: background 0.2s;
+  }
+  .map-btn:hover { background: var(--navy-light); }
+
+  /* TIP CARD */
+  .tip-card {
+    background: linear-gradient(135deg, #FFF9E6 0%, #FFFBF0 100%);
+    border: 1px solid #F5DDB3;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 4px 0 12px 64px;
+    font-size: 12px;
+    color: #7D5A00;
+    line-height: 1.5;
+  }
+
+  /* DAY TOTAL */
+  .day-total {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .day-total .label { font-size: 12px; opacity: 0.8; }
+  .day-total .amounts { text-align: right; }
+  .day-total .dong { font-size: 16px; font-weight: 900; color: var(--gold-light); }
+  .day-total .krw { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+  /* CASH MEMO */
+  .cash-memo {
+    background: #D5F5E3;
+    border: 1px solid #A9DFBF;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #1E8449;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  /* BOTTOM NAV */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    background: white;
+    border-top: 1px solid var(--border);
+    padding: 8px 0 12px;
+    display: flex;
+    justify-content: space-around;
+    z-index: 200;
+  }
+  .nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 10px;
+    font-family: 'Noto Sans KR', sans-serif;
+    padding: 4px 12px;
+  }
+  .nav-btn.active { color: var(--red); }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* BUDGET PAGE */
+  .budget-page { display: none; }
+  .budget-page.active { display: block; }
+
+  .budget-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border: 1px solid var(--border);
+  }
+  .budget-card h3 { font-size: 13px; font-weight: 700; color: var(--navy); margin-bottom: 12px; }
+  .budget-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .budget-row:last-child { border-bottom: none; }
+  .budget-row .name { color: var(--text); }
+  .budget-row .val { font-weight: 700; }
+  .budget-row .val.dong { color: var(--red); }
+  .budget-row .val.krw { color: var(--navy); }
+  .budget-total {
+    background: var(--navy);
+    color: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 12px;
+  }
+  .budget-total .t-label { font-size: 12px; opacity: 0.8; margin-bottom: 6px; }
+  .budget-total .t-dong { font-size: 22px; font-weight: 900; color: var(--gold-light); }
+  .budget-total .t-krw { font-size: 14px; margin-top: 4px; opacity: 0.9; }
+
+  /* INFO PAGE */
+  .info-page { display: none; }
+  .info-page.active { display: block; }
+  .info-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .info-card h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #F5F5F5;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .k { color: var(--muted); font-size: 12px; }
+  .info-row .v { font-weight: 700; text-align: right; max-width: 60%; }
+  .warn-box {
+    background: #FEF9E7;
+    border: 1px solid #F9CA24;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 12px;
+    color: #7D6608;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .warn-box .warn-title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+
+  /* Premium mobile UI */
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      radial-gradient(circle at 8% 8%, rgba(192, 57, 43, .12), transparent 27%),
+      radial-gradient(circle at 92% 35%, rgba(46, 95, 163, .1), transparent 32%),
+      #f6f4f2;
+  }
+  .scroll-progress {
+    position: fixed;
+    inset: 0 auto auto 0;
+    z-index: 999;
+    width: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f9ca24, #e74c3c);
+    box-shadow: 0 0 12px rgba(249, 202, 36, .65);
+  }
+  .pwa-status {
+    position: fixed;
+    z-index: 500;
+    left: 50%;
+    bottom: 92px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100% - 32px);
+    padding: 10px 14px;
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 999px;
+    background: rgba(25,29,38,.88);
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(0,0,0,.24);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 12px);
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  .pwa-status.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  .pwa-status .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; box-shadow: 0 0 10px currentColor; }
+  .pwa-status.offline .status-dot { background: #f39c12; }
+  .pwa-status button { padding: 4px 8px; border: 0; border-radius: 999px; background: #fff; color: #1b1b23; font: inherit; cursor: pointer; }
+  .install-app-button {
+    position: fixed;
+    z-index: 490;
+    right: 14px;
+    bottom: 136px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 12px;
+    border: 1px solid rgba(255,255,255,.5);
+    border-radius: 999px;
+    background: rgba(192,57,43,.9);
+    color: white;
+    box-shadow: 0 8px 22px rgba(192,57,43,.3);
+    backdrop-filter: blur(14px);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    animation: install-pulse 2.4s ease-in-out infinite;
+  }
+  .install-app-button.show { display: flex; }
+  .live-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 12px 10px;
+  }
+  .live-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,.78);
+    border-radius: 20px;
+    background: rgba(255,255,255,.7);
+    box-shadow: 0 10px 28px rgba(35,42,62,.09), inset 0 1px rgba(255,255,255,.8);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+  .live-card__label { color: var(--muted); font-size: 10px; font-weight: 700; }
+  .live-card__main { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .weather-icon { font-size: 27px; line-height: 1; }
+  .lens-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: inherit;
+    text-decoration: none;
+  }
+  .lens-card__main { display: flex; align-items: center; gap: 9px; margin-top: 7px; }
+  .lens-card__icon {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #4285f4, #34a853 45%, #fbbc05 72%, #ea4335);
+    color: #fff;
+    font-size: 18px;
+    box-shadow: 0 6px 14px rgba(66,133,244,.22);
+  }
+  .lens-card__title { font-size: 17px; font-weight: 900; }
+  #rateCard { grid-column: 1 / -1; padding: 12px 14px; }
+  .live-card__value { color: var(--text); font-size: 21px; font-weight: 900; letter-spacing: -.5px; }
+  .rate-conversion { gap: 5px; white-space: nowrap; }
+  .rate-lines { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 5px; }
+  .rate-lines .rate-conversion { margin-top: 0; }
+  .rate-base { color: var(--muted); font-size: 12px; font-weight: 800; }
+  .rate-arrow { color: var(--red); font-size: 12px; font-weight: 900; }
+  #rateValue, #usdRateValue { font-size: clamp(16px, 4.2vw, 21px); }
+  .live-card__detail { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+  .exchange-calculator { grid-column: 1 / -1; padding: 12px 14px; }
+  .exchange-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-top: 8px; }
+  .exchange-input, .exchange-output {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255,255,255,.66);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    outline: none;
+  }
+  .exchange-input:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(192,57,43,.11); }
+  .exchange-output { display: flex; align-items: center; }
+  .exchange-swap { color: var(--red); font-size: 16px; font-weight: 900; }
+  .data-source { grid-column: 1 / -1; margin: -3px 3px 0; color: var(--muted); font-size: 9px; text-align: right; }
+  .data-source a { color: inherit; }
+  @media (max-width: 370px) {
+    .rate-lines { gap: 8px; }
+    .rate-base { font-size: 10px; }
+    #rateValue, #usdRateValue { font-size: 14px; }
+  }
+  .task-check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 2px solid #d7dce5;
+    border-radius: 9px;
+    background: rgba(255,255,255,.68);
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease, transform .2s ease;
+  }
+  .task-check input { position: absolute; opacity: 0; pointer-events: none; }
+  .task-check svg { width: 17px; height: 17px; fill: none; stroke: white; stroke-width: 3; opacity: 0; transform: scale(.6); transition: opacity .18s ease, transform .18s ease; }
+  .task-check.checked { border-color: #27ae60; background: #27ae60; }
+  .task-check.checked svg { opacity: 1; transform: scale(1); }
+  .schedule-item .card { position: relative; }
+  .schedule-item .card-category, .schedule-item .card-title { padding-right: 34px; }
+  .card.task-complete { opacity: .72; }
+  .card.task-complete .card-title { text-decoration: line-through; text-decoration-color: rgba(39,174,96,.7); }
+  .trip-manage-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 9px 0 0 auto;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255,255,255,.55);
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .trip-management { display: none; grid-template-columns: 1fr; gap: 9px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .trip-management.open { display: grid; animation: page-enter .22s ease both; }
+  .manage-field { display: grid; gap: 4px; color: var(--muted); font-size: 10px; font-weight: 700; }
+  .manage-input, .manage-note {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: rgba(255,255,255,.62);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+  .manage-note { min-height: 60px; resize: vertical; line-height: 1.45; }
+  .manage-input:focus, .manage-note:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(192,57,43,.1); }
+  .save-state { min-height: 14px; color: #27ae60; font-size: 9px; text-align: right; }
+  .expense-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 14px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #1b3a6b, #2e5fa3);
+    color: white;
+    box-shadow: 0 12px 28px rgba(27,58,107,.22);
+  }
+  .expense-stat { min-width: 0; text-align: center; }
+  .expense-stat span { display: block; margin-bottom: 3px; opacity: .72; font-size: 9px; }
+  .expense-stat strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .expense-progress { grid-column: 1 / -1; height: 6px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.16); }
+  .expense-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: #f9ca24; transition: width .35s ease; }
+  .completion-summary { grid-column: 1 / -1; margin-top: 2px; font-size: 10px; opacity: .82; text-align: center; }
+  .manage-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .manage-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 9px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: rgba(255,255,255,.58);
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .manage-action.active { border-color: #27ae60; background: rgba(39,174,96,.12); color: #178544; }
+  .complete-action { grid-column: 1 / -1; border-color: #27ae60; background: #27ae60; color: white; box-shadow: 0 6px 16px rgba(39,174,96,.2); }
+  .complete-action.completed { background: rgba(39,174,96,.12); color: #178544; box-shadow: none; }
+  .receipt-action { grid-column: 1 / -1; border-color: #e5b65a; background: rgba(249,202,36,.13); color: #8a6410; }
+  .photo-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .photo-item { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 10px; background: var(--border); }
+  .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-delete { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.62); color: white; font-size: 14px; }
+  .route-sheet-backdrop { position: fixed; z-index: 800; inset: 0; display: none; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(7,10,17,.46); backdrop-filter: blur(5px); }
+  .route-sheet-backdrop.open { display: flex; animation: fade-in .2s ease both; }
+  .route-sheet { width: min(100%, 520px); padding: 18px; border: 1px solid rgba(255,255,255,.5); border-radius: 25px; background: rgba(250,250,252,.94); box-shadow: 0 24px 60px rgba(0,0,0,.28); animation: sheet-up .28s cubic-bezier(.2,.8,.2,1) both; }
+  .route-sheet__handle { width: 38px; height: 4px; margin: -7px auto 14px; border-radius: 99px; background: #c9ccd3; }
+  .route-sheet h3 { margin: 0 0 4px; color: var(--text); font-size: 17px; }
+  .route-sheet p { margin: 0 0 14px; color: var(--muted); font-size: 11px; }
+  .route-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .route-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 13px 6px; border: 1px solid var(--border); border-radius: 15px; background: white; color: var(--text); text-decoration: none; font-size: 11px; font-weight: 800; }
+  .route-option span { font-size: 22px; }
+  .route-close { width: 100%; margin-top: 10px; padding: 10px; border: 0; border-radius: 12px; background: #e9eaf0; color: #4e5563; font: inherit; font-size: 11px; font-weight: 800; }
+  .header {
+    width: min(calc(100% - 28px), 560px);
+    margin: 10px auto 8px;
+    padding: 12px 18px;
+    border: 1px solid rgba(255, 255, 255, .3);
+    border-radius: 28px;
+    background: rgba(42, 28, 36, .82);
+    box-shadow: 0 12px 34px rgba(55, 20, 20, .25), inset 0 1px rgba(255,255,255,.18);
+    backdrop-filter: blur(22px) saturate(145%);
+    -webkit-backdrop-filter: blur(22px) saturate(145%);
+    animation: island-in .55s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .header-top { margin-bottom: 2px; }
+  .header h1 { font-size: 16px; }
+  .exchange-badge { border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(8px); }
+  .header-actions { display: flex; align-items: center; gap: 7px; }
+  .theme-toggle {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 50%;
+    background: rgba(255,255,255,.12);
+    color: #fff;
+    cursor: pointer;
+    transition: transform .2s ease, background .2s ease;
+  }
+  .theme-toggle:active { transform: scale(.9) rotate(12deg); }
+  .theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+  .day-tabs, .bottom-nav {
+    background: rgba(255, 255, 255, .7);
+    border: 1px solid rgba(255,255,255,.76);
+    box-shadow: 0 10px 30px rgba(27, 58, 107, .1);
+    backdrop-filter: blur(20px) saturate(145%);
+    -webkit-backdrop-filter: blur(20px) saturate(145%);
+  }
+  .day-tabs { top: 8px; margin: 0 12px; border-radius: 17px; overflow-x: auto; }
+  .day-tab { transition: color .22s ease, background .22s ease, transform .22s ease; }
+  .day-tab:active { transform: scale(.94); }
+  .day-tab.active { border-bottom-color: transparent; border-radius: 14px; background: rgba(192,57,43,.1); }
+  .card, .budget-card, .info-card, .tip-card, .warn-box, .day-total, .cash-memo {
+    border: 1px solid rgba(255,255,255,.86);
+    background: rgba(255,255,255,.72);
+    box-shadow: 0 12px 32px rgba(35, 42, 62, .09), inset 0 1px rgba(255,255,255,.75);
+    backdrop-filter: blur(16px) saturate(135%);
+    -webkit-backdrop-filter: blur(16px) saturate(135%);
+    transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, opacity .45s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 17px 38px rgba(35,42,62,.14); }
+  .card:active, .map-btn:active, .nav-btn:active { transform: scale(.97); }
+  .map-btn { box-shadow: 0 5px 14px rgba(27,58,107,.24); transition: transform .2s ease, filter .2s ease; }
+  .map-btn:hover { filter: brightness(1.12); }
+  .bottom-nav { left: 12px; right: 12px; bottom: 10px; width: auto; border-radius: 22px; overflow: hidden; }
+  .nav-btn { transition: color .2s ease, transform .2s ease, background .2s ease; }
+  .nav-btn.active { background: rgba(192,57,43,.08); border-radius: 15px; }
+  .nav-btn svg, .map-btn svg { stroke-linecap: round; stroke-linejoin: round; }
+  .reveal { opacity: 0; transform: translateY(15px) scale(.985); }
+  .reveal.is-visible { opacity: 1; transform: none; }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0c1018;
+    --card: #171c27;
+    --text: #f4f6fb;
+    --muted: #9ba4b4;
+    --border: #283140;
+  }
+  html[data-theme="dark"] body {
+    background:
+      radial-gradient(circle at 8% 8%, rgba(192,57,43,.18), transparent 28%),
+      radial-gradient(circle at 92% 35%, rgba(46,95,163,.16), transparent 34%),
+      #0c1018;
+  }
+  html[data-theme="dark"] .card,
+  html[data-theme="dark"] .budget-card,
+  html[data-theme="dark"] .info-card,
+  html[data-theme="dark"] .tip-card,
+  html[data-theme="dark"] .warn-box,
+  html[data-theme="dark"] .day-total,
+  html[data-theme="dark"] .cash-memo,
+  html[data-theme="dark"] .day-tabs,
+  html[data-theme="dark"] .bottom-nav,
+  html[data-theme="dark"] .live-card {
+    border-color: rgba(255,255,255,.08);
+    background: rgba(22,28,40,.78);
+    box-shadow: 0 14px 34px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.05);
+  }
+  html[data-theme="dark"] .card.highlight { background: rgba(54,43,20,.72); }
+  html[data-theme="dark"] .card.hotel,
+  html[data-theme="dark"] .card.flight { background: rgba(20,38,60,.76); }
+  html[data-theme="dark"] .card.warning,
+  html[data-theme="dark"] .warn-box { background: rgba(58,38,16,.75); color: #f6d991; }
+  html[data-theme="dark"] .budget-row,
+  html[data-theme="dark"] .info-row { border-bottom-color: rgba(255,255,255,.07); }
+  html[data-theme="dark"] .day-tab.active,
+  html[data-theme="dark"] .nav-btn.active { background: rgba(231,76,60,.16); }
+  html[data-theme="dark"] .exchange-input,
+  html[data-theme="dark"] .exchange-output,
+  html[data-theme="dark"] .manage-input,
+  html[data-theme="dark"] .manage-note,
+  html[data-theme="dark"] .trip-manage-toggle,
+  html[data-theme="dark"] .manage-action { background: rgba(8,12,20,.48); }
+  html[data-theme="dark"] .route-sheet { background: rgba(19,24,35,.96); }
+  html[data-theme="dark"] .route-option { background: #171d29; }
+  html[data-theme="dark"] .route-close { background: #282f3d; color: #d9deea; }
+  html[data-theme="dark"] .complete-action:not(.completed) { border-color: #27ae60; background: #27ae60; color: white; }
+  html[data-theme="dark"] .complete-action.completed { background: rgba(39,174,96,.14); color: #5fdb8e; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) { color-scheme: dark; }
+  }
+  @keyframes island-in { from { opacity: 0; transform: translateY(-18px) scale(.94); } to { opacity: 1; transform: none; } }
+  @keyframes page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sheet-up { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  @keyframes install-pulse { 0%, 100% { box-shadow: 0 8px 22px rgba(192,57,43,.3); } 50% { box-shadow: 0 8px 30px rgba(192,57,43,.58); } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="scroll-progress" aria-hidden="true"></div>
+<div class="pwa-status" role="status" aria-live="polite"><span class="status-dot"></span><span class="status-message"></span></div>
+<button class="install-app-button" type="button" aria-label="Hanoi Trip 앱 설치">📲 Hanoi Trip 설치</button>
+<div class="route-sheet-backdrop" id="routeSheet" role="dialog" aria-modal="true" aria-labelledby="routeTitle">
+  <div class="route-sheet">
+    <div class="route-sheet__handle"></div>
+    <h3 id="routeTitle">경로 보기</h3>
+    <p id="routeDestination"></p>
+    <div class="route-options">
+      <a class="route-option" id="walkRoute" target="_blank" rel="noreferrer"><span>🚶</span>도보</a>
+      <a class="route-option" id="driveRoute" target="_blank" rel="noreferrer"><span>🚕</span>차량</a>
+      <a class="route-option" id="grabRoute" href="grab://open?screenType=BOOKING"><span>G</span>Grab</a>
+    </div>
+    <button class="route-close" id="routeClose" type="button">닫기</button>
+  </div>
+</div>
+<a class="app-home-link" href="/" aria-label="두근두근 여행 홈으로 돌아가기">⌂</a>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-top">
+    <h1>🇻🇳 하노이 가족여행</h1>
+    <span class="exchange-badge">₩0.057/₫</span>
+  </div>
+  <div class="header-sub">2026년 9월 10일 – 13일 · 4인 가족</div>
+</div>
+
+<section class="live-dashboard" aria-label="하노이 실시간 정보">
+  <article class="live-card" id="weatherCard">
+    <div class="live-card__label">하노이 현재 날씨</div>
+    <div class="live-card__main"><span class="weather-icon" id="weatherIcon">⌛</span><strong class="live-card__value" id="weatherTemperature">--℃</strong></div>
+    <div class="live-card__detail" id="weatherDetail">날씨를 불러오는 중</div>
+  </article>
+  <a class="live-card lens-card" id="googleLensButton" href="https://lens.google.com/" rel="noreferrer" aria-label="Google 렌즈 열기">
+    <div class="live-card__label">언어 감지 → 한국어</div>
+    <div class="lens-card__main"><span class="lens-card__icon">⌾</span><strong class="lens-card__title">Google 렌즈</strong></div>
+    <div class="live-card__detail">카메라 번역으로 메뉴판 보기</div>
+  </a>
+  <article class="live-card" id="rateCard">
+    <div class="live-card__label">오늘의 환율</div>
+    <div class="rate-lines">
+      <div class="live-card__main rate-conversion"><span class="rate-base">₩50,000</span><span class="rate-arrow">→</span><strong class="live-card__value" id="rateValue">약 --₫</strong></div>
+      <div class="live-card__main rate-conversion"><span class="rate-base">$100</span><span class="rate-arrow">→</span><strong class="live-card__value" id="usdRateValue">약 --₫</strong></div>
+    </div>
+    <div class="live-card__detail" id="rateDetail">최신 환율 불러오는 중</div>
+  </article>
+  <article class="live-card exchange-calculator">
+    <div class="live-card__label">환전 계산기 · VND → KRW</div>
+    <div class="exchange-row">
+      <input class="exchange-input" id="vndInput" type="number" inputmode="numeric" min="0" step="10000" value="1000000" aria-label="베트남 동 금액">
+      <span class="exchange-swap">→</span>
+      <output class="exchange-output" id="krwOutput">--원</output>
+    </div>
+  </article>
+  <p class="data-source">날씨 <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> · 환율 <a href="https://www.exchangerate-api.com/" target="_blank" rel="noreferrer">ExchangeRate-API</a></p>
+</section>
+
+<!-- DAY TABS -->
+<div class="day-tabs">
+  <button class="day-tab active" onclick="showDay(0)">
+    <span class="day-num">10</span>
+    <span class="day-label">목 · 도착</span>
+  </button>
+  <button class="day-tab" onclick="showDay(1)">
+    <span class="day-num">11</span>
+    <span class="day-label">금 · 미딩</span>
+  </button>
+  <button class="day-tab" onclick="showDay(2)">
+    <span class="day-num">12</span>
+    <span class="day-label">토 · 올드쿼터</span>
+  </button>
+  <button class="day-tab" onclick="showDay(3)">
+    <span class="day-num">13</span>
+    <span class="day-label">일 · 귀국</span>
+  </button>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="mainContent" class="content">
+
+<!-- DAY 1: 9/10 -->
+<div class="day-section active" id="day0">
+  <div class="day-title">
+    9월 10일 (목) — 도착 & Tay Ho 권역 (여유롭게!)
+    <span>A89 웨스트레이크 호텔 체크인 · 서호 저녁 후 호텔 복귀</span>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">11:05</div><div class="dot"></div></div>
+    <div class="card flight">
+      <div class="card-category">✈️ 항공</div>
+      <div class="card-title">비엣젯항공 출발 (인천)</div>
+      <div class="card-sub">비행시간 약 4시간 30분 (시차 2시간)</div>
+      <div class="card-footer">
+        <span class="price-tag">₩410,071</span>
+        <span class="pay-badge done">예약완료</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">13:35</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🛬 도착</div>
+      <div class="card-title">노이바이 국제공항 도착 (13:35 현지시간)</div>
+      <div class="card-sub">수하물·입국심사·유심·환전 포함 시 호텔 도착 15시 전후 예상</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">14:10</div><div class="dot" style="background:#95A5A6"></div></div>
+    <div class="card" style="border-left:3px solid #95A5A6;background:#F8F9FA">
+      <div class="card-category">🚗 그랩 이동</div>
+      <div class="card-title">노이바이 공항 → A89 Residence</div>
+      <div class="card-sub">약 25분 · GrabCar 4인 · 공항 내에서 앱 호출 필수</div>
+      <div class="card-footer">
+        <div><div class="price-tag" style="color:#7F8C8D">280,000₫</div><div class="price-krw">≈ ₩15,960</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">15:00</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🏨 숙소</div>
+      <div class="card-title">A89 웨스트레이크 호텔 체크인</div>
+      <div class="card-sub">⭐4.8 · 롯데몰 바로 맞은편! · 서호 도보 3분 · 무료취소</div>
+      <div class="card-footer">
+        <div><div class="price-tag">₩86,047</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJvzFT5XJVNDERN5UbbBt07Io" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge card">카드</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">15:30</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">🛌 휴식</div>
+      <div class="card-title">체크인 후 잠깐 휴식</div>
+      <div class="card-sub">짐 정리·샤워·환복 · 비행 피로 회복 시간</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:00</div><div class="dot" style="background:#27AE60"></div></div>
+    <div class="card" style="border-left:3px solid #27AE60;background:#F0FAF4">
+      <div class="card-category">🚶 도보 이동</div>
+      <div class="card-title">A89 → Chi's Passion</div>
+      <div class="card-sub">약 16m · 도보 1분 · 사실상 바로 옆!</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:10</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🍜 첫 끼니!</div>
+      <div class="card-title">Bánh Canh Bờ Kè - Chi's Passion</div>
+      <div class="card-sub">⭐4.4 (201명) · 612 Lạc Long Quân, Tây Hồ · A89 도보권! · 06:30~22:00 (브레이크타임 없음)</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        후띠에우 닥비엣 (게살+새우+오징어+오리알) 135,000₫ — 시그니처!<br>
+        · 바잉깐 개살(꾸어) 55,000₫ · 콜드 코코넛 커피도 인기<br>
+        · 판티엣(Phan Thiết) 특산 국수 전문 · 1층 주문→2층 좌석
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">400,000₫</div><div class="price-krw">≈ ₩22,800 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJPdYl-MirNTERFw0ttXdExc0" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:45</div><div class="dot" style="background:#27AE60"></div></div>
+    <div class="card" style="border-left:3px solid #27AE60;background:#F0FAF4">
+      <div class="card-category">🚶 도보 이동</div>
+      <div class="card-title">Chi's Passion → 롯데몰</div>
+      <div class="card-sub">약 260m · 도보 3분</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:50</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🛍️ 쇼핑</div>
+      <div class="card-title">롯데몰 웨스트레이크</div>
+      <div class="card-sub">식사 후 쇼핑</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        롯데마트·편의점·패션·기념품 쇼핑<br>
+        · 센떠이호 예약 전 여유롭게 쇼핑
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">100,000₫~</div><div class="price-krw">≈ ₩5,700~</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJUbIGljCrNTERLBY3VnufQus" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">17:10</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">💆 마사지</div>
+      <div class="card-title">Spa9 Hanoi</div>
+      <div class="card-sub">⭐4.8 · L7 웨스트레이크 호텔 3층 · 롯데몰 도보 1분</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 코스</div>
+        오리엔탈 마사지 1시간 or 딥티슈 1시간 · 500,000₫/인<br>
+        · 영어 소통 원활 · 카드 결제 가능 ✅<br>
+        · 롯데몰 쇼핑 후 바로 이동 — 센떠이호 전 완벽한 휴식!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">2,000,000₫</div><div class="price-krw">≈ ₩114,000 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJkUv3DhWrNTER-pMlVXAC4ms" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge card">카드</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">18:10</div><div class="dot" style="background:#27AE60"></div></div>
+    <div class="card" style="border-left:3px solid #27AE60;background:#F0FAF4">
+      <div class="card-category">🚶 도보 이동</div>
+      <div class="card-title">Spa9 → 센떠이호</div>
+      <div class="card-sub">롯데몰 옆 · 도보 10분</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">18:20</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🌊 저녁식사</div>
+      <div class="card-title">센떠이호 (Sen Tây Hồ)</div>
+      <div class="card-sub">서호 뷔페 레스토랑 · 카드 가능 ✅</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        해산물 뷔페 전체 · 380,000₫/인<br>
+        · 새우·게·그릴 요리·베트남 전통 음식 무제한<br>
+        · 맥주 2병(120,000₫) + 콜라 4캔(160,000₫) 별도
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">1,800,000₫</div><div class="price-krw">≈ ₩102,600 (뷔페+음료)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJD3MFdACrNTERIW2EVi1CYEo" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge card">카드</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">20:15</div><div class="dot" style="background:#27AE60"></div></div>
+    <div class="card" style="border-left:3px solid #27AE60;background:#F0FAF4">
+      <div class="card-category">🚶 도보 귀환</div>
+      <div class="card-title">센떠이호 → A89 (도보)</div>
+      <div class="card-sub">서호변 산책하며 도보 귀환 · 약 10~15분</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">20:30</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">🛏️ 휴식</div>
+      <div class="card-title">호텔 복귀 · 휴식</div>
+      <div class="card-sub">비행 피로 고려한 기본 일정은 여기까지 · 아래는 체력 되면 선택!</div>
+    </div>
+  </div>
+
+  <div style="background:#FFF8F0;border:2px dashed #F5C88A;border-radius:12px;padding:14px 16px;margin:8px 0 8px 64px;">
+    <div style="font-size:12px;font-weight:700;color:#D68910;margin-bottom:10px;">⭐ 선택 일정 — 컨디션 좋으면 추가로!</div>
+
+    <div style="display:flex;gap:10px;margin-bottom:10px;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#F39C12;margin-top:5px;flex-shrink:0;"></div>
+      <div style="font-size:12px;color:#7D5A1E;line-height:1.6;">
+        <b>🚂 28 Train Street Cafe</b> (선택) — 센떠이호에서 그랩 15~20분 · 자정까지 운영<br>
+        에그커피·소금커피 · 기차 통과 사진 필수 📸 · 약 200,000₫ (4인)
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div style="width:8px;height:8px;border-radius:50%;background:#F39C12;margin-top:5px;flex-shrink:0;"></div>
+      <div style="font-size:12px;color:#7D5A1E;line-height:1.6;">
+        <b>🌙 Salud Rooftop Lounge</b> (선택) — ⭐4.8 · A89 그랩 5분 · 19:00~02:00<br>
+        칵테일 Pink Pearl · 서호뷰 · 약 400,000₫ (4인)
+      </div>
+    </div>
+    <div style="font-size:11px;color:#B8860B;margin-top:8px;">💡 둘 다 하면 그랩 왕복 약 340,000₫ 추가 · 무리라면 호텔에서 편히 쉬는 것도 정답!</div>
+  </div>
+
+  <div class="tip-card">💡 첫날 그랩은 공항 이동 1번만! 나머지는 전부 도보 · 도착 당일 무리 없이 여유롭게</div>
+
+  <div class="day-total">
+    <div class="label">9월 10일 소계 (기본 일정 기준)</div>
+    <div class="amounts">
+      <div class="dong">2,300,000₫</div>
+      <div class="krw">+ ₩496,118 (숙소·항공 포함)</div>
+    </div>
+  </div>
+</div>
+
+<!-- DAY 2: 9/11 -->
+<div class="day-section" id="day1">
+  <div class="day-title">
+    9월 11일 (금) — A89 조식·수영 → 미딩 탐방 → Oakwood 체크인
+    <span>미딩 마사지·네일·식사 → Pizza 4P's 저녁</span>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">07:30</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🍳 아침식사</div>
+      <div class="card-title">A89 호텔 조식 (포함)</div>
+      <div class="card-sub">수영장 이용 후 체크아웃</div>
+    </div>
+  </div>
+
+
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">08:30</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">☕ 서호 커피</div>
+      <div class="card-title">서호 카페 & 산책</div>
+      <div class="card-sub">A89 바로 앞 서호뷰 · 체크아웃 전 여유롭게 휴식</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        A89가 서호 바로 옆이라 도보로 카페 이동 · 커피 마시며 호수뷰 감상<br>
+        · 체크아웃 전 짐 미리 정리 · 여유롭게 산책 후 출발
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">11:30</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🏨 체크아웃</div>
+      <div class="card-title">A89 웨스트레이크 호텔 체크아웃</div>
+      <div class="card-sub">✅ 짐 그대로 들고 이동 — 프런트 재방문 없이 미딩→Oakwood 직행!</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">11:40</div><div class="dot"></div></div>
+    <div class="card">
+      <div class="card-category">🚗 이동</div>
+      <div class="card-title">A89 → 미딩 (그랩, 짐 포함)</div>
+      <div class="card-sub">약 20분 · 캐리어 있어 GrabCar(트렁크有) 필수 · 110,000₫ (≈₩6,270)</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">12:10</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🥩 점심식사</div>
+      <div class="card-title">전봇대 (Geon Bot Dae)</div>
+      <div class="card-sub">⭐4.7 · 112 CT4 Từ Liêm · 미딩 한인타운 · 10:30~23:00</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        차돌박이 3인분 + 감자탕 + 음료·공기밥 (4인)<br>
+        · 블랙앵거스 소고기 · 직원이 직접 구워줌<br>
+        · 한국어 메뉴 있음 · 현지 한국인들 단골집<br>
+        · 💡 식당·마사지샵에 짐 보관 요청 가능 (로컬샵 흔히 허용)
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">1,200,000₫</div><div class="price-krw">≈ ₩68,400 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJ--eP00FVNDER7VIsHl9L3tM" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">13:00</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">💅 마사지·네일</div>
+      <div class="card-title">THREE TABOM SPA</div>
+      <div class="card-sub">⭐5.0 (1,459명) · The Garden 몰 1층 · 10:00~24:00 · 현금만 가능 · 4인 기준</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        90분 마사지 패키지 · 서비스 음료·과일·간식 무료 제공<br>
+        · 4인 합계 약 1,600,000₫ · 청결하고 전문적 — 리뷰 최고 평점<br>
+        · 예약 전화: +84 384 308 587 · 짐 보관 가능한지 사전 문의 추천
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">1,600,000₫</div><div class="price-krw">≈ ₩91,200 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJNfOcWE5VNDERi2QvpwZJZTc" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">15:05</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🍜 분짜</div>
+      <div class="card-title">분짜 27 (Bún Chả 27)</div>
+      <div class="card-sub">⭐4.7 · 27 Ngõ 39 Đình Thôn · 미딩 분짜 맛집</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        분짜 40,000₫×4 + 음료 15,000₫×4<br>
+        · 25년 전통 정통 하노이 분짜 · 한 메뉴만 운영
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">220,000₫</div><div class="price-krw">≈ ₩12,540 (4인)</div></div>
+        <a href="https://www.google.com/maps/search/Bun+Cha+27+Dinh+Thon+My+Dinh+Ha+Noi/@21.019,105.779,17z" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">15:50</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">☕ 커피숍</div>
+      <div class="card-title">미딩 커피숍</div>
+      <div class="card-sub">분짜 후 여유롭게 휴식 → Oakwood 바로 이동</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        에그 커피 (Cà Phê Trứng) 40,000₫×4 — 하노이 특산 커피
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">160,000₫</div><div class="price-krw">≈ ₩9,120 (4인)</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:45</div><div class="dot"></div></div>
+    <div class="card">
+      <div class="card-category">🚗 이동</div>
+      <div class="card-title">미딩 → Oakwood (직행, 짐 포함)</div>
+      <div class="card-sub">약 20분 · 왕복 없이 바로 직행! · 80,000₫ (≈₩4,560)</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">17:15</div><div class="dot navy"></div></div>
+    <div class="card hotel warning">
+      <div class="card-category">🏨 체크인</div>
+      <div class="card-title">Oakwood Residence Hanoi</div>
+      <div class="card-sub">⚠️ 환불불가 · Tay Ho 권역 · 인피니티풀</div>
+      <div class="card-footer">
+        <div><div class="price-tag">₩679,622</div><div class="price-krw">2박 (9/11~9/13)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJcSfOymqrNTERWcEMqeXjCcg" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge card">카드</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">18:45</div><div class="dot" style="background:#95A5A6"></div></div>
+    <div class="card" style="border-left:3px solid #95A5A6;background:#F8F9FA">
+      <div class="card-category">🚗 그랩 이동</div>
+      <div class="card-title">Oakwood → Pizza 4P's (롯데몰)</div>
+      <div class="card-sub">약 10분 · 저녁 교통 할증</div>
+      <div class="card-footer">
+        <div><div class="price-tag" style="color:#7F8C8D">60,000₫</div><div class="price-krw">≈ ₩3,420</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">19:00</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🍕 저녁식사</div>
+      <div class="card-title">Pizza 4P's — Lotte West Lake</div>
+      <div class="card-sub">⚠️ 9월 1일 예약 필수! · 카드 가능 ✅ · 체크인 후 여유있게 도착</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        반반 피자 (마르게리타+트러플) + 연어 카르파초<br>
+        · 피자 1판 250,000₫ 수준
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">500,000₫</div><div class="price-krw">≈ ₩28,500</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJeTnGjdWrNTERfVLLm1KTkY4" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge card">카드</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">20:30</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🛍️ 쇼핑</div>
+      <div class="card-title">롯데몰 웨스트레이크</div>
+      <div class="card-sub">Pizza 4P's 동일 건물 · 저녁 후 쇼핑</div>
+      <div class="card-footer">
+        <div><div class="price-tag">100,000₫</div><div class="price-krw">≈ ₩5,700</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJUbIGljCrNTERLBY3VnufQus" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">21:45</div><div class="dot" style="background:#95A5A6"></div></div>
+    <div class="card" style="border-left:3px solid #95A5A6;background:#F8F9FA">
+      <div class="card-category">🚗 그랩 이동</div>
+      <div class="card-title">롯데몰 → SENSOULMATE</div>
+      <div class="card-sub">약 10분 · 저녁 할증</div>
+      <div class="card-footer">
+        <div><div class="price-tag" style="color:#7F8C8D">70,000₫</div><div class="price-krw">≈ ₩3,990</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">22:00</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🍹 루프탑 바</div>
+      <div class="card-title">SENSOULMATE Rooftop</div>
+      <div class="card-sub">⭐5.0 · 142 Từ Hoa, Tây Hồ 3층 · 17:00~01:00</div>
+      <div class="card-menu">
+        <div class="menu-label">🍹 추천 메뉴</div>
+        시그니처 칵테일 120,000₫×4 + 안주 콤보<br>
+        · 서호 야경 뷰 · 콤보 오퍼 가성비 굿 🌃<br>
+        · ⚠️ 현금만 가능! · 롯데몰에서 그랩 10분
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">500,000₫</div><div class="price-krw">≈ ₩28,500 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJNxo5LQCrNTERn-KVFDYPpcs" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">늦게</div><div class="dot" style="background:#95A5A6"></div></div>
+    <div class="card" style="border-left:3px solid #95A5A6;background:#F8F9FA">
+      <div class="card-category">🚗 그랩 이동</div>
+      <div class="card-title">SENSOULMATE → Oakwood (귀환)</div>
+      <div class="card-sub">약 5분 · 도보 15분도 가능 · 심야</div>
+      <div class="card-footer">
+        <div><div class="price-tag" style="color:#7F8C8D">30,000₫</div><div class="price-krw">≈ ₩1,710</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-card">💡 짐은 체크아웃 후 계속 소지 — A89 재방문 없이 미딩→Oakwood 직행! 그랩 합계 약 350,000₫ (≈₩19,950)</div>
+
+  <div class="day-total">
+    <div class="label">9월 11일 소계</div>
+    <div class="amounts">
+      <div class="dong">1,400,000₫</div>
+      <div class="krw">+ ₩679,622 (Oakwood 2박)</div>
+    </div>
+  </div>
+</div>
+
+<!-- DAY 3: 9/12 -->
+<div class="day-section" id="day2">
+  <div class="day-title">
+    9월 12일 (토) — 올드쿼터 풀데이 🚶
+    <span>호안끼엠 → 시티투어(짧게) → 도보 관광 → Train Street → 타히엔</span>
+  </div>
+
+  <div class="cash-memo">💵 오늘은 올드쿼터 풀데이 (Train Street 포함) — 현금 2,000,000₫ 이상 준비 권장!</div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">07:30</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🍳 아침식사</div>
+      <div class="card-title">Oakwood Residence 조식 (포함)</div>
+      <div class="card-sub">Oakwood → 호안끼엠 그랩 25분</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">08:30</div><div class="dot" style="background:#95A5A6"></div></div>
+    <div class="card" style="border-left:3px solid #95A5A6;background:#F8F9FA">
+      <div class="card-category">🚗 그랩 이동</div>
+      <div class="card-title">Oakwood → 호안끼엠 (올드쿼터)</div>
+      <div class="card-sub">약 20분 · 아침 출발</div>
+      <div class="card-footer">
+        <div><div class="price-tag" style="color:#7F8C8D">90,000₫</div><div class="price-krw">≈ ₩5,130</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">09:00</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">⛩️ 관광</div>
+      <div class="card-title">호안끼엠 호수 & 옥산사</div>
+      <div class="card-sub">붉은 다리(더훅교)·역사 유적 · ⭐4.4</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        입장료 30,000₫/인 · 오전 이른 시간이 사람 적고 사진 예쁨<br>
+        토요일 보행자 구역 운영 — 차 없어서 걷기 최적!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">120,000₫</div><div class="price-krw">≈ ₩6,840</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJCVruNJWrNTERIAbKBaOYZ2w" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">10:00</div><div class="dot"></div></div>
+    <div class="card">
+      <div class="card-category">🚌 시티투어 (짧게)</div>
+      <div class="card-title">시티투어 버스 — 1구간만</div>
+      <div class="card-sub">호안끼엠 출발 · 도보 관광과 겹치지 않게 짧게 · 약 1시간</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        홉온홉오프 방식이지만 오늘은 1구간만 타고 하차 — 나머지는 도보로!<br>
+        오픈탑 버스라 더울 수 있음 — 선크림·모자 필수!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">600,000₫</div><div class="price-krw">≈ ₩34,200</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">12:00</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🍜 점심식사</div>
+      <div class="card-title">분짜닷킴 (Bún Chả Đắc Kim)</div>
+      <div class="card-sub">올드쿼터 · ⭐3.9 하노이 분짜 명소</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        분짜 55,000₫×4 + 게살 춘권 2개 + 음료 4<br>
+        · 하노이 분짜 명소 · 오바마 분짜집과 양대산맥
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">350,000₫</div><div class="price-krw">≈ ₩19,950 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJF5qJQL6rNTER5PCg1SoKopo" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">13:30</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🛍️ 쇼핑</div>
+      <div class="card-title">항가이·항마이 거리</div>
+      <div class="card-sub">실크·기념품·옷 · 흥정 필수!</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        처음 부른 가격의 40~50%에서 시작 · 여러 곳 비교<br>
+        실크 스카프, 아오자이, 라탄백, 베트남 커피 추천
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">300,000₫~</div><div class="price-krw">≈ ₩17,100~</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJme7AyL-rNTERCJAT8ds77jA" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">14:30</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">💆 마사지</div>
+      <div class="card-title">Elys Spa</div>
+      <div class="card-sub">⭐4.8 · 54 Phố Hàng Quạt · 분짜74 옆 · 항가이에서 도보 3분 · 10:00~01:00</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 추천 코스</div>
+        1시간 발마사지+페디큐어 강추 · 동서양 혼합 정통 기법<br>
+        · 아로마테라피+따뜻한 차·쿠키 세심한 케어<br>
+        · 사전 설문지로 원하는 강도·부위 선택 가능 · 영어 능숙
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">1,200,000₫</div><div class="price-krw">≈ ₩68,400 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJsXFKyq-rNTERCGA5C44UZL0" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:00</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🥩 간식①</div>
+      <div class="card-title">분보남보 백프엉</div>
+      <div class="card-sub">⭐4.5 · 소고기 비빔국수 맛집</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        분보남보 60,000₫×4 + 구아바 주스 4잔<br>
+        · 튀긴 춘권 추가 추천
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">300,000₫</div><div class="price-krw">≈ ₩17,100 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJ7_EaCb6rNTER8wxjCPDCtiQ" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">16:30</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">🍧 디저트</div>
+      <div class="card-title">호아베오 (Hoa Béo)</div>
+      <div class="card-sub">⭐4.3 · 망고 빙수 유명 디저트샵</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        망고 빙수 70,000₫×3 + 음료<br>
+        코코넛 아이스크림 · 딸기 요거트도 강추!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">280,000₫</div><div class="price-krw">≈ ₩15,960 (4인)</div></div>
+        <a href="https://www.google.com/maps/search/Hoa+Beo+bingsu+To+Tich+Hoan+Kiem+Ha+Noi/@21.032,105.850,17z" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">17:00</div><div class="dot gold"></div></div>
+    <div class="card">
+      <div class="card-category">🧀 간식②</div>
+      <div class="card-title">풍향고 치즈케이크</div>
+      <div class="card-sub">유재석 유튜브 소개 맛집</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        체다 치즈케이크 (폭신한 일본식 스타일)<br>
+        · 50,000₫/개 · 여러 개 구매시 할인
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">200,000₫</div><div class="price-krw">≈ ₩11,400</div></div>
+        <a href="https://www.google.com/maps/search/Phung+Hung+Cheese+Cake+Hang+Bong+Ha+Noi/@21.033,105.846,17z" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">18:00</div><div class="dot"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🥩 저녁식사</div>
+      <div class="card-title">Chou Steak</div>
+      <div class="card-sub">⭐4.6 · 화산석 직화구이 스테이크</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        화산석 직화 스테이크 200,000₫×4 + 음료 4<br>
+        · 테이블에서 직접 구워먹는 퍼포먼스!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">900,000₫</div><div class="price-krw">≈ ₩51,300 (4인)</div></div>
+        <a href="https://www.google.com/maps/search/Chou+Steak+Nguyen+Huu+Huan+Hoan+Kiem+Ha+Noi/@21.034,105.854,17z" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">19:30</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🚂 기찻길 카페</div>
+      <div class="card-title">28 Train Street Cafe</div>
+      <div class="card-sub">⭐4.7 · Chou Steak에서 도보 10분 · 자정까지 운영 · 💡 1일차에 다녀왔다면 스킵!</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        에그 커피 (35,000₫/인) · 소금 커피 (Cà Phê Muối)<br>
+        · 음료 4인 기준 · 기차 통과 시간에 선로 옆 사진 필수! 📸<br>
+        · ⚠️ 기차 지나갈 때 선로 안쪽으로 바짝 붙기
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">200,000₫</div><div class="price-krw">≈ ₩11,400 (4인)</div></div>
+        <a href="https://www.google.com/maps/search/Train+Street+Cafe+Tran+Phu+Hoan+Kiem+Ha+Noi/@21.027,105.842,17z" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">20:30</div><div class="dot green"></div></div>
+    <div class="card">
+      <div class="card-category">🛒 야시장</div>
+      <div class="card-title">동쑤언 야시장</div>
+      <div class="card-sub">기념품·쇼핑 · 도보 10분</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        흥정 필수 · 마그넷·엽서·커피·향신료 쇼핑 추천
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">300,000₫</div><div class="price-krw">≈ ₩17,100</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJC1uSGbmrNTERvIuiy_FZMzA" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">21:30</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🍺 야간명소</div>
+      <div class="card-title">타히엔 맥주거리 (Ta Hien St.)</div>
+      <div class="card-sub">⭐4.3 · 토요일만 운영 ✅ 하노이 대표 야간 명소</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        비아호이 생맥주 15,000₫×6~8잔 + 꼬치 안주<br>
+        · 플라스틱 의자에 앉아 현지인과 함께 — 하노이 감성 최고!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">300,000₫</div><div class="price-krw">≈ ₩17,100 (4인)</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJd64Vx8CrNTERulxZIacQ3Bg" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-card">💡 타히엔은 금·토·일만 운영 — 토요일이라 완벽! Train Street 포함 모든 일정 도보권, 그랩 거의 불필요!</div>
+
+  <div class="day-total">
+    <div class="label">9월 12일 소계</div>
+    <div class="amounts">
+      <div class="dong">4,060,000₫</div>
+      <div class="krw">≈ ₩231,420</div>
+    </div>
+  </div>
+</div>
+
+<!-- DAY 4: 9/13 -->
+<div class="day-section" id="day3">
+  <div class="day-title">
+    9월 13일 (일) — 체크아웃 & 귀국
+    <span>Oakwood 조식 → 공항 → 대한항공 귀국</span>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">07:00</div><div class="dot navy"></div></div>
+    <div class="card hotel">
+      <div class="card-category">🍳 아침식사</div>
+      <div class="card-title">Oakwood Residence 조식 (포함)</div>
+      <div class="card-sub">마지막 아침 · 짐 정리</div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">08:00</div><div class="dot gold"></div></div>
+    <div class="card highlight">
+      <div class="card-category">🥖 마지막 반미!</div>
+      <div class="card-title">Banh Mi Belly — 픽업</div>
+      <div class="card-sub">⭐4.9 · Oakwood에서 도보 10분 · 07:00 오픈 ✅</div>
+      <div class="card-menu">
+        <div class="menu-label">🍽️ 추천 메뉴</div>
+        크리스피 포크벨리 반미 — 기내에서 먹어도 맛있음 🛫<br>
+        · 4개 포장 후 공항으로 출발!
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">280,000₫</div><div class="price-krw">≈ ₩15,960</div></div>
+        <a href="https://www.google.com/maps/place/?q=place_id:ChIJ46CAtZCrNTERkFg7L2PeDs8" target="_blank" class="map-btn">📍 지도</a>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">09:00</div><div class="dot"></div></div>
+    <div class="card">
+      <div class="card-category">🚗 이동</div>
+      <div class="card-title">Oakwood → 노이바이 공항</div>
+      <div class="card-sub">그랩 약 35분 · 약 290,000₫ (≈₩16,530) · 여유있게 출발!</div>
+      <div class="card-menu">
+        <div class="menu-label">💡 팁</div>
+        그랩 예약은 출발 10분 전 호출<br>
+        수하물 무게 확인 필수 (비엣젯 무료 수하물 없음 주의)
+      </div>
+      <div class="card-footer">
+        <div><div class="price-tag">₩75,500</div></div>
+        <span class="pay-badge cash">현금</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="schedule-item">
+    <div class="time-col"><div class="time">12:00</div><div class="dot"></div></div>
+    <div class="card flight">
+      <div class="card-category">✈️ 귀국</div>
+      <div class="card-title">대한항공 하노이 출발</div>
+      <div class="card-sub">기내식 점심 제공</div>
+      <div class="card-footer">
+        <span class="price-tag">₩1,000,000</span>
+        <span class="pay-badge done">예약완료</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-card">⚠️ 사전 입국신고(PAI): 출발 72시간 이내 prearrival.immigration.gov.vn 작성 필수!</div>
+
+  <div class="day-total">
+    <div class="label">9월 13일 소계</div>
+    <div class="amounts">
+      <div class="dong">—</div>
+      <div class="krw">₩1,075,500 (항공·이동)</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end mainContent -->
+
+<!-- BUDGET PAGE -->
+<div id="budgetContent" class="budget-page content">
+  <section class="expense-summary" aria-label="실제 여행 경비 요약">
+    <div class="expense-stat"><span>현금 예산</span><strong id="cashBudgetValue">9,040,000₫</strong></div>
+    <div class="expense-stat"><span>실제 지출</span><strong id="actualExpenseValue">0₫</strong></div>
+    <div class="expense-stat"><span>남은 현금</span><strong id="remainingBudgetValue">9,040,000₫</strong></div>
+    <div class="expense-progress" aria-hidden="true"><span id="expenseProgressBar"></span></div>
+    <div class="completion-summary" id="completionSummary">일정 0개 완료</div>
+  </section>
+  <div class="budget-card">
+    <h3>💰 일별 예산 현황 (4인 기준)</h3>
+    <div class="budget-row"><span class="name" style="font-weight:700;color:#2E5FA3">— 현금(동) —</span><span class="val dong"></span></div>
+    <div class="budget-row"><span class="name">9/10 (Chi's Passion+도보)</span><span class="val dong">2,300,000₫</span></div>
+    <div class="budget-row"><span class="name">9/11 (미딩 직행, 왕복없음)</span><span class="val dong">1,400,000₫</span></div>
+    <div class="budget-row"><span class="name">9/12 (Train St 포함)</span><span class="val dong">4,060,000₫</span></div>
+    <div class="budget-row"><span class="name">9/13 (반미 픽업)</span><span class="val dong">280,000₫</span></div>
+    <div class="budget-row"><span class="name">예비비</span><span class="val dong">1,000,000₫</span></div>
+    <div class="budget-row"><span class="name">현금 합계</span><span class="val dong" style="font-size:15px">~9,040,000₫</span></div>
+    <div class="budget-row"><span class="name" style="font-weight:700;color:#2E5FA3">— 현지 카드(동) —</span><span class="val dong"></span></div>
+    <div class="budget-row"><span class="name">Spa9 마사지 (4인)</span><span class="val dong">2,000,000₫</span></div>
+    <div class="budget-row"><span class="name">센떠이호 뷔페+음료</span><span class="val dong">1,800,000₫</span></div>
+    <div class="budget-row"><span class="name">Pizza 4P's</span><span class="val dong">500,000₫</span></div>
+    <div class="budget-row"><span class="name">현지 카드 합계</span><span class="val dong" style="font-size:15px">4,300,000₫</span></div>
+  </div>
+  <div class="budget-card">
+    <h3>✈️ 원화 지출 항목</h3>
+    <div class="budget-row"><span class="name">비엣젯 항공 (4인)</span><span class="val krw">₩410,071</span></div>
+    <div class="budget-row"><span class="name">A89 웨스트레이크 1박</span><span class="val krw">₩86,047</span></div>
+    <div class="budget-row"><span class="name">Oakwood 2박</span><span class="val krw">₩679,622</span></div>
+    <div class="budget-row"><span class="name">대한항공 (4인)</span><span class="val krw">₩1,000,000</span></div>
+    <div class="budget-row"><span class="name">공항→숙소 이동</span><span class="val krw">₩75,500</span></div>
+  </div>
+  <div class="budget-total">
+    <div class="t-label">총 여행 예상 비용 (4인 기준)</div>
+    <div class="t-dong">현금 12,000,000₫ + 카드 4,300,000₫</div>
+    <div class="t-krw">원화 ₩2,175,740 (항공·숙소) + 현지 지출 ≈ ₩860,700</div>
+    <div class="t-krw" style="font-size:16px;font-weight:900;color:#F9CA24;margin-top:8px">총합 ≈ ₩3,036,440</div>
+  </div>
+  <div class="budget-card">
+    <h3>💵 현금 준비 가이드</h3>
+    <div class="budget-row"><span class="name">계획 현금 지출 (그랩·예비비 포함)</span><span class="val dong">9,040,000₫</span></div>
+    <div class="budget-row"><span class="name">현재 보유</span><span class="val dong">2,500,000₫</span></div>
+    <div class="budget-row"><span class="name" style="color:#E74C3C;font-weight:700">추가 필요</span><span class="val dong" style="color:#E74C3C">6,540,000₫</span></div>
+    <div class="budget-row"><span class="name">추가 필요 (원화)</span><span class="val krw">≈ ₩372,780</span></div>
+    <div class="budget-row"><span class="name" style="font-size:11px;color:#7F8C8D">💡 그랩은 앱 카드결제 등록 시 현금 -1,660,000₫ 절약 가능</span><span class="val"></span></div>
+  </div>
+</div>
+
+<!-- INFO PAGE -->
+<div id="infoContent" class="info-page content">
+  <div class="warn-box">
+    <div class="warn-title">⚠️ 출발 전 필수 체크리스트</div>
+    □ 사전 입국신고(PAI) — 출발 72시간 이내<br>
+    □ 건강신고서 — 출발 7일 이내 (9월 3일~)<br>
+    □ Pizza 4P's 예약 — 9월 1일<br>
+    □ 현금 환전 — 추가 6,540,000₫ 필요<br>
+    □ 그랩 앱 설치 (베트남 택시 앱)
+  </div>
+  <div class="info-card">
+    <h3>🏨 숙소 정보</h3>
+    <div class="info-row"><span class="k">9/10~11 숙소</span><span class="v">A89 웨스트레이크 호텔</span></div>
+    <div class="info-row"><span class="k">가격</span><span class="v">₩86,047 (예약확정)</span></div>
+    <div class="info-row"><span class="k">9/11~13 숙소</span><span class="v">Oakwood Residence Hanoi</span></div>
+    <div class="info-row"><span class="k">가격</span><span class="v">₩679,622 (⚠️환불불가)</span></div>
+  </div>
+  <div class="info-card">
+    <h3>✈️ 항공 정보</h3>
+    <div class="info-row"><span class="k">가는 편</span><span class="v">비엣젯항공 11:05→13:35 (현지)</span></div>
+    <div class="info-row"><span class="k">오는 편</span><span class="v">대한항공 12:00 출발</span></div>
+    <div class="info-row"><span class="k">공항</span><span class="v">노이바이 국제공항(HAN)</span></div>
+  </div>
+  <div class="info-card">
+    <h3>💱 환율 & 결제</h3>
+    <div class="info-row"><span class="k">환율</span><span class="v">1₫ = ₩0.057</span></div>
+    <div class="info-row"><span class="k">현금(동) 준비</span><span class="v">12,000,000₫ (≈₩684,000)</span></div>
+    <div class="info-row"><span class="k">카드 결제</span><span class="v">호텔·Pizza 4P's·센떠이호</span></div>
+    <div class="info-row"><span class="k">현금만</span><span class="v">마사지·로컬 식당 대부분</span></div>
+  </div>
+  <div class="info-card">
+    <h3>📱 현지 필수 앱</h3>
+    <div class="info-row"><span class="k">그랩 (Grab)</span><span class="v">택시·배달 앱</span></div>
+    <div class="info-row"><span class="k">Google Maps</span><span class="v">오프라인 지도 다운로드</span></div>
+    <div class="info-row"><span class="k">Google 번역</span><span class="v">베트남어 카메라 번역</span></div>
+    <div class="info-row"><span class="k">환율 계산기</span><span class="v">1₫ × 0.057 = ₩</span></div>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav">
+  <button class="nav-btn active" id="navSchedule" onclick="showPage('schedule')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    일정
+  </button>
+  <button class="nav-btn" id="navBudget" onclick="showPage('budget')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    예산
+  </button>
+  <button class="nav-btn" id="navInfo" onclick="showPage('info')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    정보
+  </button>
+</div>
+
+<script>
+let currentDay = 0;
+let currentPage = 'schedule';
+
+const pwaStatus = document.querySelector('.pwa-status');
+const pwaStatusMessage = document.querySelector('.status-message');
+const installButton = document.querySelector('.install-app-button');
+let installPrompt = null;
+let statusTimer;
+const isIosDevice = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isAndroidWebView = /\bwv\b/i.test(navigator.userAgent) || /;\s*wv\)/i.test(navigator.userAgent);
+const isNativeApp = Boolean(window.Capacitor?.isNativePlatform?.()) || isAndroidWebView;
+const isStandalone = isNativeApp || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if (!isStandalone) installButton.classList.add('show');
+
+document.querySelector('#googleLensButton')?.addEventListener('click', async (event) => {
+  if (!/android/i.test(navigator.userAgent)) return;
+  event.preventDefault();
+  showPwaStatus('Google Lens를 실행하는 중입니다…');
+  if (window.HanoiNative?.openGoogleLens) {
+    const opened = window.HanoiNative.openGoogleLens();
+    showPwaStatus(opened ? 'Google Lens를 열었습니다' : '설치된 Google Lens 앱을 찾지 못했습니다');
+    return;
+  }
+  const capacitor = window.Capacitor;
+  if (capacitor?.nativePromise) {
+    try {
+      await capacitor.nativePromise('ExternalApps', 'openGoogleLens', {});
+      return;
+    } catch (error) {
+      showPwaStatus(error?.message || 'Google Lens 앱을 실행하지 못했습니다. 최신 APK인지 확인해 주세요.');
+      return;
+    }
+  }
+  showPwaStatus('네이티브 연결을 찾지 못해 직접 실행을 시도합니다…');
+  window.location.href = 'intent://lens/#Intent;scheme=googleapp;package=com.google.ar.lens;end';
+});
+
+const liveDataKey = 'hanoi-v7-live-data';
+const weatherTemperature = document.querySelector('#weatherTemperature');
+const weatherIcon = document.querySelector('#weatherIcon');
+const weatherDetail = document.querySelector('#weatherDetail');
+const rateValue = document.querySelector('#rateValue');
+const usdRateValue = document.querySelector('#usdRateValue');
+const rateDetail = document.querySelector('#rateDetail');
+const vndInput = document.querySelector('#vndInput');
+const krwOutput = document.querySelector('#krwOutput');
+let vndToKrw = 0.057;
+
+const weatherLabels = {
+  0: ['☀️', '맑음'], 1: ['🌤️', '대체로 맑음'], 2: ['⛅', '구름 조금'], 3: ['☁️', '흐림'],
+  45: ['🌫️', '안개'], 48: ['🌫️', '안개'], 51: ['🌦️', '약한 이슬비'], 53: ['🌦️', '이슬비'],
+  55: ['🌧️', '강한 이슬비'], 61: ['🌦️', '약한 비'], 63: ['🌧️', '비'], 65: ['🌧️', '강한 비'],
+  80: ['🌦️', '소나기'], 81: ['🌧️', '소나기'], 82: ['⛈️', '강한 소나기'], 95: ['⛈️', '뇌우'],
+};
+
+function formatUpdatedAt(timestamp, cached = false) {
+  const time = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp));
+  return `${cached ? '저장된 정보' : '업데이트'} · ${time}`;
+}
+
+function updateCalculator() {
+  const vnd = Math.max(0, Number(vndInput.value) || 0);
+  krwOutput.textContent = `${Math.round(vnd * vndToKrw).toLocaleString('ko-KR')}원`;
+}
+
+function renderLiveData(data, cached = false) {
+  if (data.weather) {
+    const [icon, label] = weatherLabels[data.weather.code] || ['🌡️', '현재 날씨'];
+    weatherIcon.textContent = icon;
+    weatherTemperature.textContent = `${Math.round(data.weather.temperature)}℃`;
+    weatherDetail.textContent = `${label} · 체감 ${Math.round(data.weather.apparent)}℃ · 비 ${data.weather.rain}%\n${formatUpdatedAt(data.weather.updatedAt, cached)}`;
+  }
+  if (data.exchange) {
+    vndToKrw = data.exchange.vndToKrw;
+    const fiftyThousandDong = Math.round(50000 / vndToKrw);
+    const tenThousandDong = Math.round(10000 / vndToKrw);
+    rateValue.textContent = `약 ${fiftyThousandDong.toLocaleString('ko-KR')}₫`;
+    if (data.exchange.usdToVnd) usdRateValue.textContent = `약 ${Math.round(data.exchange.usdToVnd * 100).toLocaleString('ko-KR')}₫`;
+    rateDetail.textContent = `₩1만 ≈ ${tenThousandDong.toLocaleString('ko-KR')}₫ · ${formatUpdatedAt(data.exchange.updatedAt, cached)}`;
+    const badge = document.querySelector('.exchange-badge');
+    if (badge) badge.textContent = `₩1천 = ₫${Math.round(1000 / vndToKrw).toLocaleString('ko-KR')}`;
+    updateCalculator();
+  }
+}
+
+vndInput.addEventListener('input', updateCalculator);
+updateCalculator();
+
+async function fetchJson(url, timeout = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function refreshLiveData() {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem(liveDataKey) || '{}'); } catch { stored = {}; }
+  if (stored.weather || stored.exchange) renderLiveData(stored, true);
+
+  if (!navigator.onLine) return;
+  const weatherUrl = 'https://api.open-meteo.com/v1/forecast?latitude=21.0285&longitude=105.8542&current=temperature_2m,apparent_temperature,weather_code&daily=precipitation_probability_max&timezone=Asia%2FBangkok&forecast_days=1';
+  const exchangeUrl = 'https://open.er-api.com/v6/latest/USD';
+  const results = await Promise.allSettled([fetchJson(weatherUrl), fetchJson(exchangeUrl)]);
+  const next = { ...stored };
+
+  if (results[0].status === 'fulfilled') {
+    const value = results[0].value;
+    next.weather = {
+      temperature: value.current.temperature_2m,
+      apparent: value.current.apparent_temperature,
+      code: value.current.weather_code,
+      rain: value.daily.precipitation_probability_max[0],
+      updatedAt: Date.now(),
+    };
+  }
+  if (results[1].status === 'fulfilled' && results[1].value.result === 'success') {
+    const rates = results[1].value.rates;
+    next.exchange = { vndToKrw: rates.KRW / rates.VND, usdToVnd: rates.VND, updatedAt: Date.now() };
+  }
+
+  if (next.weather || next.exchange) {
+    localStorage.setItem(liveDataKey, JSON.stringify(next));
+    renderLiveData(next, false);
+  }
+  if (results.every((result) => result.status === 'rejected') && !stored.weather && !stored.exchange) {
+    weatherDetail.textContent = '연결되면 자동으로 업데이트됩니다';
+    rateDetail.textContent = '연결되면 자동으로 업데이트됩니다';
+  }
+}
+
+refreshLiveData();
+window.addEventListener('online', refreshLiveData);
+
+const tripStorageKey = 'hanoi-v7-trip-management';
+const cashBudget = 9040000;
+let tripState = {};
+try { tripState = JSON.parse(localStorage.getItem(tripStorageKey) || '{}'); } catch { tripState = {}; }
+const reminderTasks = [];
+
+function openPhotoDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('hanoi-v7-photos', 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('photos')) {
+        const store = db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('taskKey', 'taskKey');
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getTaskPhotos(taskKey) {
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('photos').objectStore('photos').index('taskKey').getAll(taskKey);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveTaskPhoto(taskKey, dataUrl) {
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('photos', 'readwrite').objectStore('photos').add({ taskKey, dataUrl, createdAt: Date.now() });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteTaskPhoto(id) {
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('photos', 'readwrite').objectStore('photos').delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function resizePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('이미지를 읽을 수 없습니다'));
+      image.onload = () => {
+        const maxSize = 1280;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', .78));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderTaskPhotos(taskKey, grid) {
+  try {
+    const photos = await getTaskPhotos(taskKey);
+    grid.innerHTML = '';
+    photos.forEach((photo) => {
+      const item = document.createElement('div');
+      item.className = 'photo-item';
+      const image = document.createElement('img');
+      image.src = photo.dataUrl;
+      image.alt = '여행 일정 사진';
+      image.loading = 'lazy';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'photo-delete';
+      remove.setAttribute('aria-label', '사진 삭제');
+      remove.textContent = '×';
+      remove.addEventListener('click', async () => {
+        if (!confirm('이 사진을 기기에서 삭제할까요?')) return;
+        await deleteTaskPhoto(photo.id);
+        renderTaskPhotos(taskKey, grid);
+      });
+      item.append(image, remove);
+      grid.append(item);
+    });
+  } catch {
+    grid.textContent = '사진 저장소를 열 수 없습니다';
+  }
+}
+
+const routeSheet = document.querySelector('#routeSheet');
+const routeDestination = document.querySelector('#routeDestination');
+const walkRoute = document.querySelector('#walkRoute');
+const driveRoute = document.querySelector('#driveRoute');
+const routeClose = document.querySelector('#routeClose');
+
+function setRouteLinks(destination, origin = '') {
+  const base = 'https://www.google.com/maps/dir/?api=1';
+  const originQuery = origin ? `&origin=${encodeURIComponent(origin)}` : '';
+  walkRoute.href = `${base}${originQuery}&destination=${encodeURIComponent(destination)}&travelmode=walking`;
+  driveRoute.href = `${base}${originQuery}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+document.querySelectorAll('.map-btn').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    const destination = `${button.closest('.card')?.querySelector('.card-title')?.textContent.trim() || 'Hanoi'}, Vietnam`;
+    routeDestination.textContent = destination;
+    setRouteLinks(destination);
+    routeSheet.classList.add('open');
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => setRouteLinks(destination, `${position.coords.latitude},${position.coords.longitude}`),
+        () => {},
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 300000 },
+      );
+    }
+  });
+});
+routeClose.addEventListener('click', () => routeSheet.classList.remove('open'));
+routeSheet.addEventListener('click', (event) => { if (event.target === routeSheet) routeSheet.classList.remove('open'); });
+
+function persistTripState() {
+  localStorage.setItem(tripStorageKey, JSON.stringify(tripState));
+  updateTripSummary();
+}
+
+function formatDong(value) {
+  return `${Math.round(value).toLocaleString('ko-KR')}₫`;
+}
+
+function extractReceiptAmount(text) {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const normalized = lines.map((line) => line
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase());
+  const totalKeyword = /(GRAND\s*TOTAL|TOTAL|TONG\s*CONG|TONG|THANH\s*TIEN|AMOUNT\s*DUE|합계|결제\s*금액)/;
+  const excludedKeyword = /(SUB\s*TOTAL|SUBTOTAL|TAM\s*TINH|VAT|TAX|CHANGE|거스름|세금)/;
+  const candidates = [];
+
+  function collect(line, score) {
+    const amounts = line.match(/(?:\d{1,3}(?:[.,\s]\d{3})+|\d{4,12})(?:[.,]00)?/g) || [];
+    amounts.forEach((raw) => {
+      const value = Number(raw.replace(/[.,]00$/, '').replace(/\D/g, ''));
+      if (value >= 1000 && value <= 1000000000) candidates.push({ value, score });
+    });
+  }
+
+  normalized.forEach((line, index) => {
+    if (totalKeyword.test(line) && !excludedKeyword.test(line)) {
+      collect(lines[index], 100);
+      if (lines[index + 1]) collect(lines[index + 1], 80);
+    }
+  });
+  lines.forEach((line, index) => {
+    const currencyBonus = /(VND|VNĐ|₫|Đ)/i.test(line) ? 10 : 0;
+    collect(line, excludedKeyword.test(normalized[index]) ? -20 : currencyBonus);
+  });
+  candidates.sort((a, b) => b.score - a.score || b.value - a.value);
+  return candidates[0]?.value || 0;
+}
+
+function updateTripSummary() {
+  const states = Object.values(tripState);
+  const totalSpent = states.reduce((sum, item) => sum + (Number(item.expense) || 0), 0);
+  const completed = states.filter((item) => item.completed).length;
+  const totalTasks = document.querySelectorAll('.schedule-item .card').length;
+  const remaining = cashBudget - totalSpent;
+  const rawProgress = Math.max(0, (totalSpent / cashBudget) * 100);
+  const progress = Math.min(100, rawProgress);
+
+  document.querySelector('#actualExpenseValue').textContent = formatDong(totalSpent);
+  document.querySelector('#remainingBudgetValue').textContent = formatDong(remaining);
+  document.querySelector('#remainingBudgetValue').style.color = remaining < 0 ? '#ff9c8f' : '#fff';
+  document.querySelector('#expenseProgressBar').style.width = `${progress}%`;
+  document.querySelector('#expenseProgressBar').style.background = rawProgress > 100 ? '#e74c3c' : '#f9ca24';
+  document.querySelector('#completionSummary').textContent = `일정 ${completed}/${totalTasks} 완료 · ${totalTasks ? Math.round((completed / totalTasks) * 100) : 0}%`;
+}
+
+document.querySelectorAll('.schedule-item .card').forEach((card, index) => {
+  const cardTitle = card.querySelector('.card-title')?.textContent.trim() || `일정 ${index + 1}`;
+  const key = `task-${index}`;
+  const state = tripState[key] || { completed: false, expense: 0, note: '', reminder: false, notified: false };
+  tripState[key] = state;
+
+  const check = document.createElement('label');
+  check.className = state.completed ? 'task-check checked' : 'task-check';
+  check.setAttribute('aria-label', `${cardTitle} 완료 표시`);
+  check.innerHTML = '<input type="checkbox"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+  const checkbox = check.querySelector('input');
+  checkbox.checked = state.completed;
+  if (state.completed) card.classList.add('task-complete');
+  card.prepend(check);
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'trip-manage-toggle';
+  toggle.textContent = state.expense || state.note ? '기록 있음 · 열기' : '경비 · 메모';
+  toggle.setAttribute('aria-expanded', 'false');
+
+  const management = document.createElement('div');
+  management.className = 'trip-management';
+  management.innerHTML = `
+    <label class="manage-field">실제 지출 (동)
+      <input class="manage-input" type="number" inputmode="numeric" min="0" step="10000" placeholder="예: 350000" value="${Number(state.expense) || ''}">
+    </label>
+    <label class="manage-field">여행 메모
+      <textarea class="manage-note" maxlength="500" placeholder="맛, 분위기, 다시 방문할지 기록하세요">${String(state.note || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</textarea>
+    </label>
+    <div class="manage-actions">
+      <label class="manage-action photo-action">📷 사진 추가<input class="photo-input" type="file" accept="image/*"></label>
+      <button class="manage-action reminder-action${state.reminder ? ' active' : ''}" type="button">${state.reminder ? '🔔 알림 켜짐' : '🔕 일정 알림'}</button>
+      <label class="manage-action receipt-action">🧾 영수증 촬영 · 금액 자동입력<input class="photo-input receipt-input" type="file" accept="image/*" capture="environment"></label>
+      <button class="manage-action complete-action${state.completed ? ' completed' : ''}" type="button">${state.completed ? '✓ 완료됨 · 금액 다시 저장' : '✓ 금액 확인 후 완료'}</button>
+    </div>
+    <div class="photo-grid"></div>
+    <div class="save-state" aria-live="polite"></div>`;
+  card.append(toggle, management);
+
+  const expenseInput = management.querySelector('.manage-input');
+  const noteInput = management.querySelector('.manage-note');
+  const saveState = management.querySelector('.save-state');
+  const photoInput = management.querySelector('.photo-input');
+  const receiptInput = management.querySelector('.receipt-input');
+  const photoGrid = management.querySelector('.photo-grid');
+  const reminderButton = management.querySelector('.reminder-action');
+  const completeButton = management.querySelector('.complete-action');
+  let saveTimer;
+
+  const dayIndex = Number(card.closest('.day-section')?.id.replace('day', '') || 0);
+  const time = card.closest('.schedule-item')?.querySelector('.time')?.textContent.trim();
+  const reminderDate = /^\d{1,2}:\d{2}$/.test(time || '')
+    ? new Date(`2026-09-${String(10 + dayIndex).padStart(2, '0')}T${time}:00+07:00`)
+    : null;
+  reminderTasks.push({ state, title: cardTitle, date: reminderDate });
+  renderTaskPhotos(key, photoGrid);
+
+  function saveFields() {
+    state.expense = Math.max(0, Number(expenseInput.value) || 0);
+    state.note = noteInput.value;
+    persistTripState();
+    toggle.textContent = state.expense || state.note ? '기록 있음 · 닫기' : '경비 · 메모';
+    saveState.textContent = '기기에 저장됨';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { saveState.textContent = ''; }, 1600);
+  }
+
+  checkbox.addEventListener('change', () => {
+    if (checkbox.checked && !state.completed) {
+      checkbox.checked = false;
+      management.classList.add('open');
+      toggle.setAttribute('aria-expanded', 'true');
+      toggle.textContent = '기록 닫기';
+      expenseInput.focus();
+      showPwaStatus('실제 지출 금액을 확인한 뒤 완료 버튼을 눌러주세요', { duration: 4200 });
+      return;
+    }
+    if (!checkbox.checked && state.completed) {
+      state.completed = false;
+      state.notified = false;
+      check.classList.remove('checked');
+      card.classList.remove('task-complete');
+      completeButton.classList.remove('completed');
+      completeButton.textContent = '✓ 금액 확인 후 완료';
+      persistTripState();
+      showPwaStatus('일정 완료를 취소했습니다');
+    }
+  });
+  toggle.addEventListener('click', () => {
+    const open = management.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? '기록 닫기' : (state.expense || state.note ? '기록 있음 · 열기' : '경비 · 메모');
+  });
+  expenseInput.addEventListener('input', saveFields);
+  noteInput.addEventListener('input', saveFields);
+  photoInput.addEventListener('change', async () => {
+    const file = photoInput.files?.[0];
+    if (!file) return;
+    saveState.textContent = '사진 저장 중…';
+    try {
+      const dataUrl = await resizePhoto(file);
+      await saveTaskPhoto(key, dataUrl);
+      await renderTaskPhotos(key, photoGrid);
+      saveState.textContent = '사진이 기기에 저장됨';
+    } catch {
+      saveState.textContent = '사진을 저장하지 못했습니다';
+    }
+    photoInput.value = '';
+  });
+  receiptInput.addEventListener('change', async () => {
+    const file = receiptInput.files?.[0];
+    if (!file) return;
+    saveState.textContent = '영수증 분석 중…';
+    try {
+      const dataUrl = await resizePhoto(file);
+      await saveTaskPhoto(key, dataUrl);
+      await renderTaskPhotos(key, photoGrid);
+      const capacitor = window.Capacitor;
+      if (!capacitor?.nativePromise) throw new Error('NATIVE_OCR_REQUIRED');
+      const result = await capacitor.nativePromise('ReceiptOcr', 'recognize', { dataUrl });
+      const amount = extractReceiptAmount(result.text || '');
+      if (!amount) {
+        saveState.textContent = '합계 금액을 찾지 못했습니다 · 직접 입력해 주세요';
+      } else {
+        expenseInput.value = amount;
+        saveFields();
+        saveState.textContent = `${formatDong(amount)} 자동입력 · 금액을 확인해 주세요`;
+        expenseInput.focus();
+        expenseInput.select();
+      }
+    } catch (error) {
+      saveState.textContent = error.message === 'NATIVE_OCR_REQUIRED'
+        ? '영수증 OCR은 최신 Android APK에서 사용할 수 있습니다'
+        : '영수증을 인식하지 못했습니다 · 다시 촬영해 주세요';
+    }
+    receiptInput.value = '';
+  });
+  reminderButton.addEventListener('click', async () => {
+    if (!reminderDate) {
+      showPwaStatus('이 일정에는 알림 시간이 없습니다');
+      return;
+    }
+    if (!('Notification' in window)) {
+      showPwaStatus('이 브라우저는 일정 알림을 지원하지 않습니다');
+      return;
+    }
+    if (!state.reminder && 'Notification' in window && Notification.permission !== 'granted') {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showPwaStatus('알림 권한이 필요합니다');
+        return;
+      }
+    }
+    state.reminder = !state.reminder;
+    state.notified = false;
+    reminderButton.classList.toggle('active', state.reminder);
+    reminderButton.textContent = state.reminder ? '🔔 알림 켜짐' : '🔕 일정 알림';
+    persistTripState();
+    const hanoiTime = reminderDate.toLocaleString('ko-KR', { timeZone: 'Asia/Bangkok', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    showPwaStatus(state.reminder ? `${hanoiTime} (하노이) 알림 설정` : '일정 알림 해제');
+  });
+  completeButton.addEventListener('click', () => {
+    saveFields();
+    state.completed = true;
+    checkbox.checked = true;
+    check.classList.add('checked');
+    card.classList.add('task-complete');
+    completeButton.classList.add('completed');
+    completeButton.textContent = '✓ 완료됨 · 금액 다시 저장';
+    persistTripState();
+    showPwaStatus(`${cardTitle} 완료 · ${formatDong(state.expense)}`);
+    if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+  });
+});
+
+persistTripState();
+
+async function checkDueReminders() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const now = Date.now();
+  for (const reminder of reminderTasks) {
+    if (!reminder.state.reminder || reminder.state.notified || !reminder.date) continue;
+    const difference = now - reminder.date.getTime();
+    if (difference >= 0 && difference < 60000) {
+      const options = { body: `${reminder.title} 일정 시간입니다.`, icon: '/icons/pwa-192.png', tag: `hanoi-${reminder.date.getTime()}` };
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification('Hanoi Trip 일정', options);
+      } else {
+        new Notification('Hanoi Trip 일정', options);
+      }
+      reminder.state.notified = true;
+      persistTripState();
+    }
+  }
+}
+checkDueReminders();
+setInterval(checkDueReminders, 30000);
+
+function showPwaStatus(message, options = {}) {
+  clearTimeout(statusTimer);
+  pwaStatusMessage.textContent = message;
+  pwaStatus.classList.toggle('offline', Boolean(options.offline));
+  pwaStatus.classList.add('show');
+  if (!options.persistent) {
+    statusTimer = setTimeout(() => pwaStatus.classList.remove('show'), options.duration || 2600);
+  }
+}
+
+function updateConnectionStatus() {
+  if (navigator.onLine) {
+    showPwaStatus('온라인으로 연결됐습니다');
+  } else {
+    showPwaStatus('오프라인 모드 · 저장된 일정 사용 중', { offline: true, persistent: true });
+  }
+}
+
+window.addEventListener('online', updateConnectionStatus);
+window.addEventListener('offline', updateConnectionStatus);
+if (!navigator.onLine) updateConnectionStatus();
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  installButton.classList.add('show');
+});
+
+installButton.addEventListener('click', async () => {
+  if (installPrompt) {
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') installButton.classList.remove('show');
+    installPrompt = null;
+    return;
+  }
+  showPwaStatus(isIosDevice ? 'Safari 공유 버튼 → 홈 화면에 추가' : '브라우저 메뉴 → 앱 설치', { duration: 5000 });
+});
+
+window.addEventListener('appinstalled', () => {
+  installButton.classList.remove('show');
+  showPwaStatus('Hanoi Trip 설치 완료');
+});
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            showPwaStatus('새 버전이 준비됐습니다', { duration: 4000 });
+          }
+        });
+      });
+      setInterval(() => registration.update(), 60 * 60 * 1000);
+    } catch {
+      showPwaStatus('오프라인 준비를 완료하지 못했습니다', { offline: true });
+    }
+  });
+}
+
+const themeKey = 'hanoi-v7-theme';
+const savedTheme = localStorage.getItem(themeKey);
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+document.documentElement.dataset.theme = savedTheme || (prefersDark ? 'dark' : 'light');
+
+const headerTop = document.querySelector('.header-top');
+const exchangeBadge = document.querySelector('.exchange-badge');
+const headerActions = document.createElement('div');
+headerActions.className = 'header-actions';
+headerActions.append(exchangeBadge);
+
+const themeToggle = document.createElement('button');
+themeToggle.className = 'theme-toggle';
+themeToggle.type = 'button';
+themeToggle.setAttribute('aria-label', '밝은 화면과 어두운 화면 전환');
+headerActions.append(themeToggle);
+headerTop.append(headerActions);
+
+function renderThemeIcon() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  themeToggle.innerHTML = isDark
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm0-16h1v3h-2V2h1Zm0 17h1v3h-2v-3h1ZM4.2 5.6l2.1 2.1-1.4 1.4L2.8 7l1.4-1.4Zm12.5 12.5 2.1 2.1-1.4 1.4-2.1-2.1 1.4-1.4ZM2 11h3v2H2v-2Zm17 0h3v2h-3v-2ZM4.9 14.9l1.4 1.4-2.1 2.1L2.8 17l2.1-2.1ZM17.4 5.6 18.8 7l-2.1 2.1-1.4-1.4 2.1-2.1Z"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 15.5A9 9 0 0 1 8.5 3.3 9 9 0 1 0 20.7 15.5Z"/></svg>';
+  themeToggle.setAttribute('aria-pressed', String(isDark));
+}
+
+themeToggle.addEventListener('click', () => {
+  const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = nextTheme;
+  localStorage.setItem(themeKey, nextTheme);
+  renderThemeIcon();
+});
+renderThemeIcon();
+
+function showDay(idx) {
+  document.querySelectorAll('.day-section').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.day-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('day' + idx).classList.add('active');
+  document.querySelectorAll('.day-tab')[idx].classList.add('active');
+  currentDay = idx;
+  window.scrollTo(0, 0);
+}
+
+function showPage(page) {
+  currentPage = page;
+  document.getElementById('mainContent').style.display = page === 'schedule' ? 'block' : 'none';
+  document.getElementById('budgetContent').classList.toggle('active', page === 'budget');
+  document.getElementById('infoContent').classList.toggle('active', page === 'info');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+  // show/hide day tabs and budget bar
+  document.querySelector('.day-tabs').style.display = page === 'schedule' ? 'flex' : 'none';
+  window.scrollTo(0, 0);
+}
+
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) entry.target.classList.add('is-visible');
+  });
+}, { threshold: 0.08, rootMargin: '0px 0px -24px' });
+
+document.querySelectorAll('.card, .budget-card, .info-card, .tip-card, .day-total').forEach((element) => {
+  element.classList.add('reveal');
+  revealObserver.observe(element);
+});
+
+const progress = document.querySelector('.scroll-progress');
+function updateScrollProgress() {
+  const available = document.documentElement.scrollHeight - window.innerHeight;
+  progress.style.width = `${available > 0 ? (window.scrollY / available) * 100 : 0}%`;
+}
+window.addEventListener('scroll', updateScrollProgress, { passive: true });
+updateScrollProgress();
+
+// PWA 설치 안내
+/* The parent PWA service worker handles this page.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // SW 등록 없이도 홈화면 추가는 가능
+  });
+}
+*/
+</script>
+</body>
+</html>

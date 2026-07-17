@@ -1,0 +1,12 @@
+{
+  "appId": "com.james.hanoitrip",
+  "appName": "Hanoi Trip",
+  "webDir": "dist",
+  "server": {
+    "url": "https://travel-app-six-opal.vercel.app/hanoi-trip.html",
+    "errorPath": "hanoi-trip.html"
+  },
+  "android": {
+    "backgroundColor": "#1b1b23"
+  }
+}
