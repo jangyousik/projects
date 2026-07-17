@@ -14,7 +14,7 @@
 - 운영 주소: <https://travel-app-six-opal.vercel.app>
 - 상세 일정 주소: <https://travel-app-six-opal.vercel.app/hanoi-trip.html>
 
-> `여행온` 이름은 아직 Android 앱 이름, PWA manifest, 화면 전체에 일괄 적용하지 않았다.
+`여행온` 이름은 Android 설치 이름, Capacitor 앱 이름, PWA manifest와 브라우저 제목에 적용했다.
 
 ## 2. 기술 구성
 
@@ -163,7 +163,7 @@ ADB:
 2. 위치 핀 + 여행 경로 + ON 심볼, 밝은 하늘색 버전
 3. 비행기 + 기차 + 배 + 상승 여행 경로, 밝은 설렘 버전
 
-현재 선호 시안은 3번이다. 아직 프로젝트의 Android/PWA 아이콘으로 적용하지 않았다.
+3번 시안을 최종 방향으로 선택해 Android/PWA/Apple Touch 아이콘에 적용했다.
 
 생성 원본 기본 위치:
 
@@ -218,14 +218,11 @@ C:\Users\jys78\.codex\generated_images\019f6fd8-c816-70a0-b695-62997d805323\
 
 ## 8. 바로 이어서 할 작업
 
-1. `여행온` 최종 아이콘 선택과 적용
-2. Android/PWA 표시 이름을 `여행온`으로 통일
-3. 현재 1.1과 1.2 소스 차이를 정리하고 새 안정 버전 확정
-4. Git 저장소 초기화 또는 기존 GitHub 저장소 연결
-5. Supabase 프로젝트 생성과 `.env.local` 설정
-6. DB 스키마 및 RLS 작성
-7. 로그인 화면 구현
-8. 공유와 Excel 입출력 구현
+1. 여행온 1.2 Android 실기기 검증 및 안정 버전 확정
+2. Supabase 프로젝트 생성과 `.env.local` 설정
+3. DB 스키마 및 RLS 작성
+4. 로그인 화면 구현
+5. 공유와 Excel 입출력 구현
 
 ## 9. 작업 재개용 문장
 

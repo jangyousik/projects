@@ -1,6 +1,6 @@
 {
   "appId": "com.james.hanoitrip",
-  "appName": "Hanoi Trip",
+  "appName": "여행온",
   "webDir": "dist",
   "server": {
     "url": "https://travel-app-six-opal.vercel.app/hanoi-trip.html",
