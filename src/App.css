@@ -9,6 +9,18 @@ main { width: min(100% - 36px, 720px); margin: 0 auto; padding: 28px 0 34px; }
 .trip-detail-header p, .trip-detail-header h2, .trip-detail-header small { margin: 0; display: block; }
 .trip-detail-header p, .trip-detail-header small { color: rgba(255,255,255,.72); font-size: .72rem; }
 .trip-detail-header h2 { margin: 3px 0 5px; font-size: 1.3rem; }
+.trip-live-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.live-tool-card { min-width: 0; padding: 15px; border: 1px solid rgba(255,255,255,.65); border-radius: 19px; background: rgba(255,255,255,.78); color: #20232d; text-align: left; box-shadow: 0 8px 24px rgba(50,57,84,.08); backdrop-filter: blur(16px); }
+button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
+.live-tool-card small, .live-tool-card span { display: block; color: #777d8b; font-size: .66rem; }
+.live-tool-card > strong { display: block; margin: 10px 0 6px; font-size: 1.2rem; }
+.rate-tool, .calculator-tool, .live-tool-notice { grid-column: 1 / -1; }
+.rate-tool div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 18px; margin: 10px 0 7px; }
+.rate-tool strong { font-size: clamp(.78rem, 3vw, .95rem); }
+.calculator-tool > div { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-top: 9px; }
+.calculator-tool input, .calculator-tool output { min-width: 0; padding: 11px; border: 1px solid #e0dde9; border-radius: 12px; background: #fff; color: #292735; font: inherit; font-size: .82rem; font-weight: 800; }
+.calculator-tool b { color: #d94b42; }
+.live-tool-notice { margin: 0; color: #777d8b; font-size: .68rem; text-align: center; }
 .hero-copy { margin: 44px 0 16px; align-items: end; }
 .hero-copy h2, .quick-section h2 { margin: 0; font-size: 1.18rem; letter-spacing: -.025em; }
 .text-button { border: 0; background: transparent; color: #6755d9; text-decoration: none; font-weight: 750; }

@@ -3,6 +3,7 @@ import './App.css'
 import { BottomNav } from './components/BottomNav'
 import { AuthPanel } from './components/AuthPanel'
 import { GooglePlaceSearch } from './components/GooglePlaceSearch'
+import { TripLiveTools } from './components/TripLiveTools'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook } from './lib/tripExcel'
@@ -786,6 +787,8 @@ function App() {
             <div><p>{selectedTrip.destination}</p><h2>{selectedTrip.title}</h2><small>{selectedTrip.startDate} ~ {selectedTrip.endDate} · {selectedTrip.people}명</small></div>
           </section>
         )}
+
+        {isTripDetail && <TripLiveTools trip={selectedTrip} />}
 
         {!session && (
           <section className="empty-home" aria-labelledby="login-first-title">
