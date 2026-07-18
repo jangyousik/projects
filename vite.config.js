@@ -16,7 +16,7 @@ export default defineConfig({
         background_color: '#f7f8fc',
         display: 'standalone',
         orientation: 'portrait-primary',
-        start_url: '/hanoi-trip.html',
+        start_url: '/',
         scope: '/',
         lang: 'ko-KR',
         icons: [
@@ -40,6 +40,8 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         navigateFallback: 'index.html',
       },
     }),

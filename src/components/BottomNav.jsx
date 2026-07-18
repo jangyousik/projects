@@ -1,6 +1,6 @@
 const navItems = [
   { icon: '⌂', label: '홈', active: true, href: '/' },
-  { icon: '▣', label: '여행', href: '/hanoi-trip.html' },
+  { icon: '▣', label: '여행', href: '/' },
   { icon: '♡', label: '저장', href: '#saved' },
   { icon: '⚙', label: '설정', href: '#settings' },
 ]

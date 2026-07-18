@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { BottomNav } from './components/BottomNav'
-import { TripCard } from './components/TripCard'
 import { AuthPanel } from './components/AuthPanel'
 import { GooglePlaceSearch } from './components/GooglePlaceSearch'
-import { upcomingTrip } from './data/trips'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook } from './lib/tripExcel'
 
 function App() {
-  const showLegacyFeaturedTrip = false
   const [dialog, setDialog] = useState(null)
   const [trips, setTrips] = useState([])
   const [places, setPlaces] = useState([])
@@ -686,13 +683,6 @@ function App() {
           </section>
         )}
 
-        {showLegacyFeaturedTrip && <section className="hero-copy" aria-labelledby="next-trip-title">
-          <div><p className="section-label">다가오는 여행</p><h2 id="next-trip-title">설레는 순간을 한곳에</h2></div>
-          <a className="text-button" href="/hanoi-trip.html">일정 열기</a>
-        </section>}
-
-        {showLegacyFeaturedTrip && <TripCard trip={upcomingTrip} />}
-
         {!session && (
           <section className="empty-home" aria-labelledby="login-first-title">
             <span aria-hidden="true">✈️</span>
@@ -848,7 +838,7 @@ function App() {
         {screen === 'home' && session && trips.length > 0 && <button className="new-trip-button" type="button" onClick={openTripDialog}><span aria-hidden="true">＋</span> 새 여행 만들기</button>}
       </main>
 
-      <BottomNav />
+      {session && <BottomNav />}
 
       {dialog && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
