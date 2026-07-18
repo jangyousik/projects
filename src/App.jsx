@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import { BottomNav } from './components/BottomNav'
 import { TripCard } from './components/TripCard'
+import { AuthPanel } from './components/AuthPanel'
 import { upcomingTrip } from './data/trips'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 const readStored = (key) => {
   try { return JSON.parse(localStorage.getItem(key) || '[]') } catch { return [] }
@@ -13,6 +15,14 @@ function App() {
   const [trips, setTrips] = useState(() => readStored('travel-app-trips'))
   const [places, setPlaces] = useState(() => readStored('travel-app-places'))
   const [schedules, setSchedules] = useState(() => readStored('travel-app-schedules'))
+  const [session, setSession] = useState(null)
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    return () => data.subscription.unsubscribe()
+  }, [])
 
   const saveTrip = (event) => {
     event.preventDefault()
@@ -66,7 +76,7 @@ function App() {
             <p className="eyebrow">안녕하세요 👋</p>
             <h1>어디로 떠나볼까요?</h1>
           </div>
-          <button className="profile-button" type="button" aria-label="내 프로필">여행자</button>
+          <button className="profile-button" type="button" aria-label="로그인과 내 프로필" onClick={() => setDialog('auth')}>{session ? (session.user.user_metadata?.name?.slice(0, 2) || 'MY') : '로그인'}</button>
         </header>
 
         <section className="hero-copy" aria-labelledby="next-trip-title">
@@ -129,8 +139,10 @@ function App() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
           <section className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="dialog-handle" />
-            <div className="dialog-heading"><div><p className="section-label">새로운 기록</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'schedule' ? '새 일정 만들기' : '장소 저장'}</h2></div><button type="button" onClick={() => setDialog(null)} aria-label="닫기">×</button></div>
-            {dialog === 'trip' ? (
+            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => setDialog(null)} aria-label="닫기">×</button></div>
+            {dialog === 'auth' ? (
+              <AuthPanel session={session} onClose={() => setDialog(null)} />
+            ) : dialog === 'trip' ? (
               <form onSubmit={saveTrip}>
                 <label>여행지<input name="destination" required placeholder="예: 도쿄" /></label>
                 <div className="form-row"><label>출발일<input name="startDate" type="date" required /></label><label>도착일<input name="endDate" type="date" required /></label></div>

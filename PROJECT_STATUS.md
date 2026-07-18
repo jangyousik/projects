@@ -183,6 +183,14 @@ C:\Users\jys78\.codex\generated_images\019f6fd8-c816-70a0-b695-62997d805323\
 
 추천 플랫폼: Supabase
 
+진행 상태:
+
+- `@supabase/supabase-js` 설치 완료
+- `.env.example` 및 안전한 클라이언트 초기화 추가
+- 초기 DB 스키마와 RLS 정책 작성
+- 이메일 매직링크·Google 로그인 UI 기반 추가
+- 실제 Supabase 프로젝트 생성과 키 연결은 아직 필요
+
 계획:
 
 1. Supabase 프로젝트 생성

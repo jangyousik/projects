@@ -52,6 +52,12 @@ main { width: min(100% - 36px, 720px); margin: 0 auto; padding: 28px 0 34px; }
 .app-dialog textarea { min-height: 85px; resize: vertical; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .dialog-submit { padding: 13px; border: 0; border-radius: 13px; background: #6555d9; color: white; font-weight: 800; }
+.auth-panel, .auth-account { display: grid; gap: 14px; }
+.google-login { padding: 13px; border: 1px solid #dfe1e8; border-radius: 13px; background: #fff; color: #20232d; font-weight: 800; }
+.auth-divider { display: flex; align-items: center; gap: 10px; color: #9095a1; font-size: .72rem; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #e6e7ec; }
+.auth-message, .auth-notice { margin: 0; padding: 12px; border-radius: 12px; background: #f0edff; color: #5846c9; font-size: .8rem; line-height: 1.5; }
+.auth-account span { color: #777d8b; font-size: .8rem; }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
 .bottom-nav { position: fixed; z-index: 10; left: 50%; bottom: 0; transform: translateX(-50%); width: min(100%, 756px); height: 72px; padding: 6px 16px max(6px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); box-sizing: border-box; border-top: 1px solid #ececf2; background: rgba(255,255,255,.92); backdrop-filter: blur(18px); }
 .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; background: transparent; color: #9095a1; text-decoration: none; font-size: .67rem; font-weight: 750; }
