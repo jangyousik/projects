@@ -73,6 +73,12 @@ main { width: min(100% - 36px, 720px); margin: 0 auto; padding: 28px 0 34px; }
 .trip-select b { justify-self: end; color: #777d8b; font-size: .7rem; }
 .trip-entry.is-selected { border-color: #8072e2; background: #f5f3ff; box-shadow: 0 0 0 2px rgba(101,85,217,.1); }
 .trip-entry.is-selected .trip-select b { color: #5846c9; }
+.trip-budget-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; padding: 10px 6px; border-radius: 14px; background: linear-gradient(135deg, #274d7d, #315c97); color: #fff; }
+.trip-budget-summary span { min-width: 0; padding: 0 7px; text-align: center; border-right: 1px solid rgba(255,255,255,.25); }
+.trip-budget-summary span:last-child { border-right: 0; }
+.trip-budget-summary small, .trip-budget-summary strong { display: block; margin: 0; }
+.trip-budget-summary small { color: rgba(255,255,255,.72); font-size: .58rem; }
+.trip-budget-summary strong { margin-top: 4px; overflow: hidden; color: #ffd83d; font-size: clamp(.63rem, 2.5vw, .78rem); white-space: nowrap; text-overflow: ellipsis; }
 .saved-list strong, .saved-list small { display: block; }
 .saved-list small { margin-top: 2px; color: #777d8b; font-size: .72rem; }
 .saved-list b { color: #6555d9; font-size: 1.3rem; }

@@ -912,6 +912,14 @@ function App() {
                 <button className="trip-select" type="button" onClick={() => openTripDetail(trip.id)}>
                   <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><b>{selectedTripId === trip.id ? '선택됨' : '선택'}</b>
                 </button>
+                {trip.title.includes('하노이') && (
+                  <div className="trip-budget-summary" aria-label="하노이 여행 예산 요약">
+                    <span><small>숙소</small><strong>₩765,669</strong></span>
+                    <span><small>현금(동)</small><strong>9,040,000₫</strong></span>
+                    <span><small>현지카드(동)</small><strong>4,300,000₫</strong></span>
+                    <span><small>항공</small><strong>₩1,410,071</strong></span>
+                  </div>
+                )}
                 {trip.ownerId === session?.user.id && <div className="item-actions">
                   <button type="button" onClick={() => openEditDialog('trip', trip)}>수정</button>
                   <button className="danger" type="button" onClick={() => deleteTrip(trip)}>삭제</button>
