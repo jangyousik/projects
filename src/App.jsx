@@ -835,7 +835,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${isTripDetail && selectedTrip?.title.includes('하노이') ? 'hanoi-detail-theme' : ''}`}>
+    <div className={`app-shell ${isTripDetail ? 'hanoi-detail-theme' : ''}`}>
       <main>
         <header className="topbar">
           <div>
