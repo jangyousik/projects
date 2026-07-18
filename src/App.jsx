@@ -436,20 +436,43 @@ function App() {
   }
 
   const toggleSchedule = async (schedule) => {
+    if (!session || !selectedTripId || !supabase || itemLoading) return
+
+    const completed = !schedule.completed
+    let actualCost = schedule.actualCost || 0
+    if (completed) {
+      const enteredCost = window.prompt(
+        '완료 금액을 입력하세요. (베트남 동)',
+        String(schedule.actualCost || schedule.estimatedCost || 0),
+      )
+      if (enteredCost === null) return
+      actualCost = Number(enteredCost.replace(/[^0-9.]/g, ''))
+      if (!Number.isFinite(actualCost) || actualCost < 0) {
+        setItemMessage('완료 금액을 올바르게 입력해 주세요.')
+        return
+      }
+    }
+
     setItemLoading(true)
     setItemMessage('')
-    const completed = !schedule.completed
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('schedule_items')
-      .update({ completed })
+      .update({ completed, actual_cost: actualCost, updated_at: new Date().toISOString() })
       .eq('id', schedule.id)
       .eq('trip_id', selectedTripId)
+      .select('completed,actual_cost')
+      .single()
     setItemLoading(false)
     if (error) {
       setItemMessage(`완료 상태를 변경하지 못했습니다: ${error.message}`)
       return
     }
-    setSchedules((current) => current.map((item) => item.id === schedule.id ? { ...item, completed } : item))
+    setSchedules((current) => current.map((item) => item.id === schedule.id ? {
+      ...item,
+      completed: data.completed,
+      actualCost: Number(data.actual_cost),
+    } : item))
+    setItemMessage(data.completed ? `완료 처리했습니다. 실제 금액 ${Number(data.actual_cost).toLocaleString('ko-KR')}₫` : '완료를 취소했습니다.')
   }
 
   const deleteItem = async (type, item) => {
@@ -846,9 +869,9 @@ function App() {
             <div className="saved-list">{schedules.map((schedule) => (
               <div className={`saved-trip schedule-row ${schedule.completed ? 'is-completed' : ''}`} key={schedule.id}>
                 <span className="schedule-date"><strong>{new Date(`${schedule.date}T00:00:00`).getDate()}</strong><small>{schedule.time}</small></span>
-                <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
+                <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {(schedule.completed ? schedule.actualCost : schedule.estimatedCost).toLocaleString('ko-KR')}₫</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 {canEditTrip && <div className="item-actions">
-                  <button type="button" onClick={() => toggleSchedule(schedule)}>{schedule.completed ? '완료 취소' : '완료'}</button>
+                  <button type="button" onClick={() => toggleSchedule(schedule)} disabled={itemLoading}>{schedule.completed ? '완료 취소' : '완료'}</button>
                   <button type="button" onClick={() => openEditDialog('schedule', schedule)}>수정</button>
                   <button className="danger" type="button" onClick={() => deleteItem('schedule', schedule)}>삭제</button>
                 </div>}
