@@ -3,8 +3,8 @@
   "appName": "여행온",
   "webDir": "dist",
   "server": {
-    "url": "https://travel-app-six-opal.vercel.app/hanoi-trip.html",
-    "errorPath": "hanoi-trip.html"
+    "url": "https://travel-app-six-opal.vercel.app",
+    "errorPath": "index.html"
   },
   "android": {
     "backgroundColor": "#1b1b23"

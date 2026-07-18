@@ -26,6 +26,8 @@ key.properties
 *.aab
 *.previous.apk
 hanoi-*.png
+.tmp-*.png
+.tmp-*.xml
 
 # Editor directories and files
 .vscode/*

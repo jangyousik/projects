@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.james.hanoitrip",
+      "sha256_cert_fingerprints": [
+        "0D:4A:BD:D9:95:D6:6C:7A:58:46:00:E1:75:24:30:3C:87:B1:5F:C1:C7:EB:69:47:2A:28:5E:1E:28:A6:B3:60"
+      ]
+    }
+  }
+]

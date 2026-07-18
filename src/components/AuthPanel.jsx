@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { Browser } from '@capacitor/browser'
+import { Capacitor } from '@capacitor/core'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { getAuthRedirectUrl } from '../lib/mobileAuth'
 
 export function AuthPanel({ session, onClose }) {
   const [email, setEmail] = useState('')
@@ -9,9 +12,10 @@ export function AuthPanel({ session, onClose }) {
   const sendMagicLink = async (event) => {
     event.preventDefault()
     setLoading(true)
+    setMessage('')
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: getAuthRedirectUrl() },
     })
     setMessage(error ? error.message : '로그인 링크를 이메일로 보냈습니다.')
     setLoading(false)
@@ -19,11 +23,25 @@ export function AuthPanel({ session, onClose }) {
 
   const signInWithGoogle = async () => {
     setLoading(true)
-    const { error } = await supabase.auth.signInWithOAuth({
+    setMessage('')
+    const isNative = Capacitor.isNativePlatform()
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: getAuthRedirectUrl(),
+        skipBrowserRedirect: isNative,
+      },
     })
-    if (error) setMessage(error.message)
+
+    if (error) {
+      setMessage(error.message)
+      setLoading(false)
+      return
+    }
+
+    if (isNative && data?.url) {
+      await Browser.open({ url: data.url })
+    }
     setLoading(false)
   }
 
@@ -33,7 +51,7 @@ export function AuthPanel({ session, onClose }) {
   }
 
   if (!isSupabaseConfigured) {
-    return <p className="auth-notice">Supabase 프로젝트 연결 후 로그인이 활성화됩니다. 현재는 오프라인 모드입니다.</p>
+    return <p className="auth-notice">Supabase 연결 정보가 없어 로그인 기능을 사용할 수 없습니다.</p>
   }
 
   if (session) {
@@ -48,11 +66,25 @@ export function AuthPanel({ session, onClose }) {
 
   return (
     <div className="auth-panel">
-      <button className="google-login" type="button" onClick={signInWithGoogle} disabled={loading}>Google로 계속하기</button>
+      <button className="google-login-button" type="button" onClick={signInWithGoogle} disabled={loading}>
+        <span className="google-mark" aria-hidden="true">G</span>
+        Google로 계속하기
+      </button>
       <div className="auth-divider"><span>또는</span></div>
       <form onSubmit={sendMagicLink}>
-        <label>이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="name@example.com" /></label>
-        <button className="dialog-submit" type="submit" disabled={loading}>{loading ? '연결 중…' : '이메일 로그인 링크 받기'}</button>
+        <label>
+          이메일
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            placeholder="name@example.com"
+          />
+        </label>
+        <button className="dialog-submit" type="submit" disabled={loading}>
+          {loading ? '처리 중…' : '이메일 로그인 링크 받기'}
+        </button>
       </form>
       {message && <p className="auth-message" role="status">{message}</p>}
     </div>
