@@ -1,4 +1,26 @@
 .app-shell { min-height: 100svh; background: #f7f8fc; padding-bottom: 84px; }
+.hanoi-detail-theme { --hanoi-red: #c0392b; --hanoi-red-light: #e74c3c; --hanoi-gold: #f39c12; --hanoi-navy: #1b3a6b; --hanoi-navy-light: #2e5fa3; --hanoi-border: #ece0d5; background: radial-gradient(circle at 85% 8%, rgba(243,156,18,.12), transparent 22%), #fdf8f3; }
+.hanoi-detail-theme .trip-detail-header { background: linear-gradient(135deg, var(--hanoi-red), #8b1a1a); box-shadow: 0 14px 32px rgba(192,57,43,.28); }
+.hanoi-detail-theme .trip-detail-header button { background: rgba(255,255,255,.17); }
+.hanoi-detail-theme .trip-live-tools { padding: 10px; border: 1px solid rgba(255,255,255,.7); border-radius: 23px; background: rgba(255,244,240,.58); box-shadow: 0 14px 34px rgba(96,55,45,.08); backdrop-filter: blur(16px); }
+.hanoi-detail-theme .live-tool-card { border-color: var(--hanoi-border); background: rgba(255,255,255,.88); box-shadow: 0 8px 20px rgba(91,50,38,.08); }
+.hanoi-detail-theme .live-tool-card > strong, .hanoi-detail-theme .rate-tool strong { color: #352d2b; }
+.hanoi-detail-theme .calculator-tool b, .hanoi-detail-theme .saved-list .schedule-cost { color: var(--hanoi-red); }
+.hanoi-detail-theme .calculator-tool input:focus { border-color: var(--hanoi-red); outline: 0; box-shadow: 0 0 0 3px rgba(192,57,43,.11); }
+.hanoi-detail-theme .section-label { color: var(--hanoi-red); }
+.hanoi-detail-theme .schedule-day-tabs { position: sticky; z-index: 8; top: 0; padding: 7px; border: 1px solid var(--hanoi-border); border-radius: 17px; background: rgba(253,248,243,.92); box-shadow: 0 8px 20px rgba(91,50,38,.08); backdrop-filter: blur(14px); }
+.hanoi-detail-theme .schedule-day-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 11px; background: transparent; }
+.hanoi-detail-theme .schedule-day-tabs button.is-active { border-bottom-color: var(--hanoi-red); background: #fff; color: var(--hanoi-red); box-shadow: 0 5px 14px rgba(192,57,43,.1); }
+.hanoi-detail-theme .schedule-row { position: relative; overflow: hidden; border-color: var(--hanoi-border); border-left: 4px solid var(--hanoi-red); border-radius: 18px; box-shadow: 0 9px 24px rgba(91,50,38,.08); }
+.hanoi-detail-theme .schedule-row:nth-child(even) { border-left-color: var(--hanoi-navy-light); }
+.hanoi-detail-theme .schedule-date { background: #fff0ed; color: var(--hanoi-red); }
+.hanoi-detail-theme .schedule-row:nth-child(even) .schedule-date { background: #edf3fb; color: var(--hanoi-navy); }
+.hanoi-detail-theme .schedule-date small { color: inherit; }
+.hanoi-detail-theme .item-actions button, .hanoi-detail-theme .item-actions a { background: #edf3fb; color: var(--hanoi-navy); }
+.hanoi-detail-theme .item-actions .danger { background: #fff0ed; color: var(--hanoi-red); }
+.hanoi-detail-theme .expense-summary span { background: linear-gradient(135deg, var(--hanoi-navy), var(--hanoi-navy-light)); }
+.hanoi-detail-theme .mini-add { background: #fff0ed; color: var(--hanoi-red); }
+.hanoi-detail-theme .bottom-nav { border-top-color: var(--hanoi-border); background: rgba(253,248,243,.94); }
 main { width: min(100% - 36px, 720px); margin: 0 auto; padding: 28px 0 34px; }
 .topbar, .hero-copy, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .eyebrow, .section-label { margin: 0 0 5px; color: #6c7280; font-size: .84rem; font-weight: 700; }
