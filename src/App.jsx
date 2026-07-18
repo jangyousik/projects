@@ -16,6 +16,7 @@ function App() {
   const [members, setMembers] = useState([])
   const [session, setSession] = useState(null)
   const [selectedTripId, setSelectedTripId] = useState(null)
+  const [setupTripId, setSetupTripId] = useState(null)
   const [screen, setScreen] = useState('home')
   const [tripsLoading, setTripsLoading] = useState(false)
   const [tripMessage, setTripMessage] = useState('')
@@ -170,6 +171,7 @@ function App() {
   const isTripDetail = Boolean(session) && screen === 'trip' && Boolean(selectedTrip)
 
   const openTripDetail = (tripId) => {
+    setSetupTripId(null)
     setSelectedTripId(tripId)
     setScreen('trip')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -264,11 +266,13 @@ function App() {
       people: data.people,
       currency: data.currency,
     }
-    setTrips((current) => (editingItem?.type === 'trip'
+    const isEditingTrip = editingItem?.type === 'trip'
+    setTrips((current) => (isEditingTrip
       ? current.map((trip) => trip.id === savedTrip.id ? savedTrip : trip)
       : [...current, savedTrip]
     ).sort((a, b) => a.startDate.localeCompare(b.startDate)))
     setSelectedTripId(data.id)
+    setSetupTripId(isEditingTrip ? null : data.id)
     setScreen('trip')
     setEditingItem(null)
     setDialog(null)
@@ -778,7 +782,7 @@ function App() {
 
         {isTripDetail && (
           <section className="trip-detail-header">
-            <button type="button" onClick={() => setScreen('home')} aria-label="여행 목록으로 돌아가기">←</button>
+            <button type="button" onClick={() => { setSetupTripId(null); setScreen('home') }} aria-label="여행 목록으로 돌아가기">←</button>
             <div><p>{selectedTrip.destination}</p><h2>{selectedTrip.title}</h2><small>{selectedTrip.startDate} ~ {selectedTrip.endDate} · {selectedTrip.people}명</small></div>
           </section>
         )}
@@ -803,7 +807,7 @@ function App() {
           </section>
         )}
 
-        {isTripDetail && (
+        {isTripDetail && setupTripId === selectedTripId && (
           <section className="excel-section" aria-labelledby="excel-title">
             <div><p className="section-label">Excel 일정 관리</p><h2 id="excel-title">양식으로 한 번에 만들기</h2></div>
             <p>양식을 내려받아 일정을 입력한 뒤 그대로 업로드하세요. 예약 사이트와 예약 링크도 함께 등록됩니다.</p>
