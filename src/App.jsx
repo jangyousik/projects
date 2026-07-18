@@ -54,6 +54,7 @@ function App() {
   const [session, setSession] = useState(null)
   const [selectedTripId, setSelectedTripId] = useState(null)
   const [setupTripId, setSetupTripId] = useState(null)
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(null)
   const [screen, setScreen] = useState('home')
   const [tripsLoading, setTripsLoading] = useState(false)
   const [tripMessage, setTripMessage] = useState('')
@@ -206,9 +207,13 @@ function App() {
 
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) || null
   const isTripDetail = Boolean(session) && screen === 'trip' && Boolean(selectedTrip)
+  const scheduleDates = [...new Set(schedules.map((schedule) => schedule.date))].sort()
+  const activeScheduleDate = scheduleDates.includes(selectedScheduleDate) ? selectedScheduleDate : scheduleDates[0]
+  const visibleSchedules = schedules.filter((schedule) => schedule.date === activeScheduleDate)
 
   const openTripDetail = (tripId) => {
     setSetupTripId(null)
+    setSelectedScheduleDate(null)
     setSelectedTripId(tripId)
     setScreen('trip')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -902,9 +907,17 @@ function App() {
         {isTripDetail && schedules.length > 0 && (
           <section className="saved-section">
             <p className="section-label">{selectedTrip?.title} · 일정</p>
-            <div className="saved-list">{schedules.map((schedule) => (
+            <div className="schedule-day-tabs" role="tablist" aria-label="여행 날짜 선택">
+              {scheduleDates.map((date, index) => {
+                const dateValue = new Date(`${date}T00:00:00`)
+                const hanoiLabels = ['도착', '미딩', '올드쿼터', '귀국']
+                const subtitle = selectedTrip.title.includes('하노이') ? hanoiLabels[index] : `${index + 1}일차`
+                return <button className={activeScheduleDate === date ? 'is-active' : ''} type="button" role="tab" aria-selected={activeScheduleDate === date} onClick={() => setSelectedScheduleDate(date)} key={date}><strong>{dateValue.getDate()}</strong><small>{new Intl.DateTimeFormat('ko-KR', { weekday: 'short' }).format(dateValue)} · {subtitle}</small></button>
+              })}
+            </div>
+            <div className="saved-list">{visibleSchedules.map((schedule) => (
               <div className={`saved-trip schedule-row ${schedule.completed ? 'is-completed' : ''}`} key={schedule.id}>
-                <span className="schedule-date"><strong>{new Date(`${schedule.date}T00:00:00`).getDate()}</strong><small>{schedule.time}</small></span>
+                <span className="schedule-date"><strong>{schedule.time || '일정'}</strong><small>{schedule.time ? '시간' : schedule.date.slice(5)}</small></span>
                 <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {(schedule.completed ? schedule.actualCost : schedule.estimatedCost).toLocaleString('ko-KR')}₫</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>

@@ -98,8 +98,15 @@ button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
 .saved-list small { margin-top: 2px; color: #777d8b; font-size: .72rem; }
 .saved-list b { color: #6555d9; font-size: 1.3rem; }
 .schedule-row { grid-template-columns: 48px 1fr; }
+.schedule-day-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(72px, 1fr); gap: 5px; margin: 10px 0 13px; overflow-x: auto; scrollbar-width: none; }
+.schedule-day-tabs::-webkit-scrollbar { display: none; }
+.schedule-day-tabs button { min-width: 72px; padding: 10px 7px; border: 1px solid #e6e3ef; border-radius: 13px; background: #fff; color: #777d8b; }
+.schedule-day-tabs strong, .schedule-day-tabs small { display: block; }
+.schedule-day-tabs strong { font-size: 1rem; }
+.schedule-day-tabs small { margin-top: 3px; font-size: .6rem; white-space: nowrap; }
+.schedule-day-tabs button.is-active { border-color: #e2a8a3; background: #fff0ef; color: #c23f37; box-shadow: 0 5px 14px rgba(194,63,55,.1); }
 .schedule-date { display: grid; place-items: center; min-height: 48px; border-radius: 12px; background: #f0edff; color: #6555d9; }
-.schedule-date strong { font-size: 1.05rem; line-height: 1; }
+.schedule-date strong { font-size: .78rem; line-height: 1; }
 .schedule-date small { margin: 2px 0 0; color: #6555d9; font-size: .62rem; }
 .saved-list .schedule-cost { margin-top: 6px; color: #d94b42; font-weight: 800; }
 .dialog-backdrop { position: fixed; z-index: 50; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(18,21,30,.48); backdrop-filter: blur(5px); }
