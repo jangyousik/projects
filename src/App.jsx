@@ -167,7 +167,7 @@ function App() {
   }, [session, selectedTripId])
 
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) || null
-  const isTripDetail = screen === 'trip' && Boolean(selectedTrip)
+  const isTripDetail = Boolean(session) && screen === 'trip' && Boolean(selectedTrip)
 
   const openTripDetail = (tripId) => {
     setSelectedTripId(tripId)
@@ -813,7 +813,7 @@ function App() {
           </section>
         )}
 
-        {screen === 'home' && trips.length > 0 && (
+        {screen === 'home' && session && trips.length > 0 && (
           <section className="saved-section">
             <p className="section-label">내가 만든 여행</p>
             <div className="saved-list">{trips.map((trip) => (
