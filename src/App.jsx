@@ -8,6 +8,13 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook } from './lib/tripExcel'
 
+function getScheduleMapUrl(schedule, trip) {
+  const storedUrl = schedule.memo?.match(/지도:\s*(https?:\/\/[^\s·]+)/i)?.[1]
+  if (storedUrl) return storedUrl
+  const query = [schedule.place, schedule.address, schedule.title, trip?.destination].filter(Boolean).join(', ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
 function App() {
   const [dialog, setDialog] = useState(null)
   const [trips, setTrips] = useState([])
@@ -870,11 +877,14 @@ function App() {
               <div className={`saved-trip schedule-row ${schedule.completed ? 'is-completed' : ''}`} key={schedule.id}>
                 <span className="schedule-date"><strong>{new Date(`${schedule.date}T00:00:00`).getDate()}</strong><small>{schedule.time}</small></span>
                 <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {(schedule.completed ? schedule.actualCost : schedule.estimatedCost).toLocaleString('ko-KR')}₫</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
-                {canEditTrip && <div className="item-actions">
+                <div className="item-actions">
+                  <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
+                  {canEditTrip && <>
                   <button type="button" onClick={() => toggleSchedule(schedule)} disabled={itemLoading}>{schedule.completed ? '완료 취소' : '완료'}</button>
                   <button type="button" onClick={() => openEditDialog('schedule', schedule)}>수정</button>
                   <button className="danger" type="button" onClick={() => deleteItem('schedule', schedule)}>삭제</button>
-                </div>}
+                  </>}
+                </div>
                 {schedule.reservationUrl && <div className="reservation-link"><a href={schedule.reservationUrl} target="_blank" rel="noreferrer">{schedule.reservationSite || '예약 사이트'} 열기</a>{schedule.reservationReference && <span>예약번호 {schedule.reservationReference}</span>}</div>}
               </div>
             ))}</div>
