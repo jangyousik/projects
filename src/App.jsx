@@ -665,6 +665,106 @@ function App() {
     }
   }
 
+  const restoreHanoiFamilyTrip = async () => {
+    if (!session || !supabase || session.user.email?.toLowerCase() !== 'jys7867@gmail.com') return
+
+    setTripsLoading(true)
+    setTripMessage('하노이 가족여행을 DB로 이전하고 있습니다...')
+    try {
+      const { data: existingTrip, error: existingError } = await supabase
+        .from('trips')
+        .select('id,owner_id,title,destination,start_date,end_date,people,currency')
+        .eq('owner_id', session.user.id)
+        .eq('title', '하노이 가족 여행')
+        .maybeSingle()
+      if (existingError) throw existingError
+
+      let tripData = existingTrip
+      if (!tripData) {
+        const { data, error } = await supabase.from('trips').insert({
+          owner_id: session.user.id,
+          title: '하노이 가족 여행',
+          destination: '베트남 · 하노이',
+          start_date: '2026-09-10',
+          end_date: '2026-09-13',
+          people: 4,
+          currency: 'VND',
+        }).select('id,owner_id,title,destination,start_date,end_date,people,currency').single()
+        if (error) throw error
+        tripData = data
+      }
+
+      const response = await fetch('/hanoi-trip.html', { cache: 'no-store' })
+      if (!response.ok) throw new Error('기존 하노이 일정 파일을 열 수 없습니다.')
+      const documentHtml = new DOMParser().parseFromString(await response.text(), 'text/html')
+      const { data: savedSchedules, error: scheduleError } = await supabase
+        .from('schedule_items')
+        .select('day_date,start_time,title')
+        .eq('trip_id', tripData.id)
+      if (scheduleError) throw scheduleError
+
+      const existingKeys = new Set((savedSchedules || []).map((item) => `${item.day_date}|${item.start_time?.slice(0, 5) || ''}|${item.title}`))
+      const rows = []
+      documentHtml.querySelectorAll('.day-section[id^="day"]').forEach((daySection) => {
+        const dayIndex = Number(daySection.id.replace('day', ''))
+        if (!Number.isInteger(dayIndex)) return
+        const dayDate = new Date(`${tripData.start_date}T00:00:00`)
+        dayDate.setDate(dayDate.getDate() + dayIndex)
+        const date = dayDate.toISOString().slice(0, 10)
+
+        daySection.querySelectorAll('.schedule-item').forEach((item, sortOrder) => {
+          const rawTime = item.querySelector('.time')?.textContent.trim() || ''
+          const time = /^\d{1,2}:\d{2}$/.test(rawTime) ? rawTime.padStart(5, '0') : null
+          const title = item.querySelector('.card-title')?.textContent.trim()
+          if (!title || existingKeys.has(`${date}|${time || ''}|${title}`)) return
+          const category = item.querySelector('.card-category')?.textContent.trim() || ''
+          const priceText = item.querySelector('.price-tag')?.textContent.trim() || ''
+          const mapUrl = item.querySelector('.map-btn')?.href || ''
+          const cardText = item.querySelector('.card')?.textContent.replace(/\s+/g, ' ').trim() || ''
+          const vndCost = priceText.includes('₫') ? Number(priceText.replace(/[^0-9]/g, '')) || 0 : 0
+          const memoParts = [category, rawTime && !time ? `시간: ${rawTime}` : '', cardText, mapUrl ? `지도: ${mapUrl}` : ''].filter(Boolean)
+          rows.push({
+            trip_id: tripData.id,
+            day_date: date,
+            start_time: time,
+            title,
+            memo: memoParts.join(' · ').slice(0, 1800),
+            estimated_cost: vndCost,
+            actual_cost: 0,
+            completed: false,
+            sort_order: sortOrder,
+            reservation_status: item.querySelector('.pay-badge.done') ? 'booked' : 'none',
+            created_by: session.user.id,
+          })
+        })
+      })
+
+      if (rows.length) {
+        const { error } = await supabase.from('schedule_items').insert(rows)
+        if (error) throw error
+      }
+
+      const restoredTrip = {
+        id: tripData.id,
+        ownerId: tripData.owner_id,
+        title: tripData.title,
+        destination: tripData.destination,
+        startDate: tripData.start_date,
+        endDate: tripData.end_date,
+        people: tripData.people,
+        currency: tripData.currency,
+      }
+      setTrips([restoredTrip])
+      setSelectedTripId(restoredTrip.id)
+      setScreen('trip')
+      setTripMessage(`하노이 가족여행과 새로운 일정 ${rows.length}개를 DB에 저장했습니다.`)
+    } catch (error) {
+      setTripMessage(`하노이 여행 이전 실패: ${error.message}`)
+    } finally {
+      setTripsLoading(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <main>
@@ -696,8 +796,10 @@ function App() {
           <section className="empty-home" aria-labelledby="empty-trip-title">
             <span aria-hidden="true">🧳</span>
             <h2 id="empty-trip-title">아직 등록된 여행이 없어요</h2>
-            <p>새 여행을 만들거나 소유자에게 초대를 요청해 주세요.</p>
-            <button type="button" onClick={openTripDialog}>새 여행 만들기</button>
+            <p>{session.user.email?.toLowerCase() === 'jys7867@gmail.com' ? '기존 하노이 4일 일정을 Supabase DB로 이전할 수 있습니다.' : '새 여행을 만들거나 소유자에게 초대를 요청해 주세요.'}</p>
+            {session.user.email?.toLowerCase() === 'jys7867@gmail.com'
+              ? <button type="button" onClick={restoreHanoiFamilyTrip}>하노이 4일 일정 복원</button>
+              : <button type="button" onClick={openTripDialog}>새 여행 만들기</button>}
           </section>
         )}
 
