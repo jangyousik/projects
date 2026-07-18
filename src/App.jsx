@@ -784,6 +784,14 @@ function App() {
           <section className="trip-detail-header">
             <button type="button" onClick={() => { setSetupTripId(null); setScreen('home') }} aria-label="여행 목록으로 돌아가기">←</button>
             <div><p>{selectedTrip.destination}</p><h2>{selectedTrip.title}</h2><small>{selectedTrip.startDate} ~ {selectedTrip.endDate} · {selectedTrip.people}명</small></div>
+            {selectedTrip.title.includes('하노이') && (
+              <div className="trip-budget trip-detail-budget" aria-label="하노이 여행 예산 요약">
+                <span className="trip-budget__item"><small>숙소</small><strong>₩765,669</strong></span>
+                <span className="trip-budget__item"><small>현금(동)</small><strong>9,040,000₫</strong></span>
+                <span className="trip-budget__item"><small>현지카드(동)</small><strong>4,300,000₫</strong></span>
+                <span className="trip-budget__item"><small>항공</small><strong>₩1,410,071</strong></span>
+              </div>
+            )}
           </section>
         )}
 

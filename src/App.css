@@ -9,6 +9,7 @@ main { width: min(100% - 36px, 720px); margin: 0 auto; padding: 28px 0 34px; }
 .trip-detail-header p, .trip-detail-header h2, .trip-detail-header small { margin: 0; display: block; }
 .trip-detail-header p, .trip-detail-header small { color: rgba(255,255,255,.72); font-size: .72rem; }
 .trip-detail-header h2 { margin: 3px 0 5px; font-size: 1.3rem; }
+.trip-detail-header .trip-detail-budget { grid-column: 1 / -1; width: 100%; margin: 3px 0 0; }
 .hero-copy { margin: 44px 0 16px; align-items: end; }
 .hero-copy h2, .quick-section h2 { margin: 0; font-size: 1.18rem; letter-spacing: -.025em; }
 .text-button { border: 0; background: transparent; color: #6755d9; text-decoration: none; font-weight: 750; }
