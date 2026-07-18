@@ -83,6 +83,9 @@ button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
 .trip-entry .trip-select { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
 .trip-entry .item-actions { margin-top: 10px; }
 .trip-select b { justify-self: end; color: #777d8b; font-size: .7rem; }
+.trip-card-status { display: grid; justify-items: end; gap: 6px; }
+.trip-card-status em { padding: 5px 8px; border-radius: 99px; background: #e8f2ff; color: #315c97; font-size: .66rem; font-style: normal; font-weight: 850; white-space: nowrap; }
+.trip-card-status b { font-size: .7rem; }
 .trip-entry.is-selected { border-color: #8072e2; background: #f5f3ff; box-shadow: 0 0 0 2px rgba(101,85,217,.1); }
 .trip-entry.is-selected .trip-select b { color: #5846c9; }
 .trip-budget-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; padding: 10px 6px; border-radius: 14px; background: linear-gradient(135deg, #274d7d, #315c97); color: #fff; }

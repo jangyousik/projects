@@ -18,6 +18,17 @@ function getScheduleMapUrl(schedule, trip) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
+function getTripCountdown(trip) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const start = new Date(`${trip.startDate}T00:00:00`)
+  const end = new Date(`${trip.endDate}T00:00:00`)
+  const dayMs = 24 * 60 * 60 * 1000
+  if (today < start) return `D-${Math.ceil((start - today) / dayMs)}`
+  if (today <= end) return `여행중 · DAY ${Math.floor((today - start) / dayMs) + 1}`
+  return '여행 완료'
+}
+
 async function openGrabForSchedule(schedule, trip) {
   const destination = [schedule.place, schedule.address, schedule.title, trip?.destination].filter(Boolean).join(', ')
   try { await navigator.clipboard.writeText(destination) } catch { /* Clipboard permission is optional. */ }
@@ -965,7 +976,7 @@ function App() {
             <div className="saved-list">{trips.map((trip) => (
               <div className={`saved-trip trip-entry ${selectedTripId === trip.id ? 'is-selected' : ''}`} key={trip.id}>
                 <button className="trip-select" type="button" onClick={() => openTripDetail(trip.id)}>
-                  <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><b>{selectedTripId === trip.id ? '선택됨' : '선택'}</b>
+                  <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><span className="trip-card-status"><em>{getTripCountdown(trip)}</em><b>{selectedTripId === trip.id ? '선택됨' : '선택'}</b></span>
                 </button>
                 {trip.title.includes('하노이') && (
                   <div className="trip-budget-summary" aria-label="하노이 여행 예산 요약">
