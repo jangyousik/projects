@@ -803,21 +803,6 @@ function App() {
           </section>
         )}
 
-        {isTripDetail && <section className="quick-section" aria-labelledby="quick-title">
-          <div className="section-heading"><div><p className="section-label">빠른 메뉴</p><h2 id="quick-title">여행 준비하기</h2></div></div>
-          <div className="quick-grid">
-            <button className="quick-card" type="button" onClick={() => openItemDialog('schedule')} disabled={selectedTrip && !canEditTrip}>
-              <span className="quick-icon" aria-hidden="true">🗓️</span><strong>일정 만들기</strong><span>새로운 날짜별 일정을 추가해요</span>
-            </button>
-            <button className="quick-card" type="button" onClick={() => openItemDialog('place')} disabled={selectedTrip && !canEditTrip}>
-              <span className="quick-icon" aria-hidden="true">📍</span><strong>장소 저장</strong><span>가고 싶은 곳을 모아둬요</span>
-            </button>
-            <button className="quick-card" type="button" onClick={() => openItemDialog('expense')} disabled={selectedTrip && !canEditTrip}>
-              <span className="quick-icon" aria-hidden="true">💳</span><strong>경비 기록</strong><span>여행 지출을 바로 기록해요</span>
-            </button>
-          </div>
-        </section>}
-
         {isTripDetail && (
           <section className="excel-section" aria-labelledby="excel-title">
             <div><p className="section-label">Excel 일정 관리</p><h2 id="excel-title">양식으로 한 번에 만들기</h2></div>
