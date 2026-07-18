@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import { BottomNav } from './components/BottomNav'
 import { AuthPanel } from './components/AuthPanel'
 import { GooglePlaceSearch } from './components/GooglePlaceSearch'
@@ -8,11 +9,28 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook } from './lib/tripExcel'
 
+const ExternalApps = registerPlugin('ExternalApps')
+
 function getScheduleMapUrl(schedule, trip) {
   const storedUrl = schedule.memo?.match(/지도:\s*(https?:\/\/[^\s·]+)/i)?.[1]
   if (storedUrl) return storedUrl
   const query = [schedule.place, schedule.address, schedule.title, trip?.destination].filter(Boolean).join(', ')
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+async function openGrabForSchedule(schedule, trip) {
+  const destination = [schedule.place, schedule.address, schedule.title, trip?.destination].filter(Boolean).join(', ')
+  try { await navigator.clipboard.writeText(destination) } catch { /* Clipboard permission is optional. */ }
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await ExternalApps.openGrab()
+      return
+    } catch { /* Older APKs fall through to the Android intent. */ }
+  }
+
+  const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=com.grabtaxi.passenger')
+  window.location.href = `intent://open?screenType=BOOKING#Intent;scheme=grab;package=com.grabtaxi.passenger;S.browser_fallback_url=${fallback};end`
 }
 
 function App() {
@@ -879,6 +897,7 @@ function App() {
                 <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {(schedule.completed ? schedule.actualCost : schedule.estimatedCost).toLocaleString('ko-KR')}₫</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
+                  <button type="button" onClick={() => openGrabForSchedule(schedule, selectedTrip)}>🚕 Grab</button>
                   {canEditTrip && <>
                   <button type="button" onClick={() => toggleSchedule(schedule)} disabled={itemLoading}>{schedule.completed ? '완료 취소' : '완료'}</button>
                   <button type="button" onClick={() => openEditDialog('schedule', schedule)}>수정</button>
