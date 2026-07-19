@@ -96,7 +96,7 @@ export function TripLiveTools({ trip }) {
       </article>
       <article className="live-tool-card calculator-tool">
         <small>환전 계산기 · VND → KRW</small>
-        <div><input type="number" inputMode="numeric" min="0" value={amount} onChange={(event) => setAmount(Number(event.target.value))} aria-label="베트남 동 금액" /><b>→</b><output>{Math.round(amount * vndToKrw).toLocaleString('ko-KR')}원</output></div>
+        <div><input type="text" inputMode="numeric" value={amount.toLocaleString('ko-KR')} onChange={(event) => setAmount(Number(event.target.value.replace(/[^0-9]/g, '')) || 0)} aria-label="베트남 동 금액" /><b>→</b><output>{Math.round(amount * vndToKrw).toLocaleString('ko-KR')}원</output></div>
       </article>
       {notice && <p className="live-tool-notice" role="status">{notice}</p>}
     </section>

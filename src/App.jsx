@@ -7,9 +7,36 @@ import { GooglePlaceSearch } from './components/GooglePlaceSearch'
 import { TripLiveTools } from './components/TripLiveTools'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
-import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook } from './lib/tripExcel'
+import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook, readWorkbookForAi } from './lib/tripExcel'
 
 const ExternalApps = registerPlugin('ExternalApps')
+
+const CURRENCY_OPTIONS = [
+  ['VND', '베트남 동'], ['KRW', '한국 원'], ['USD', '미국 달러'], ['JPY', '일본 엔'],
+  ['THB', '태국 바트'], ['SGD', '싱가포르 달러'], ['EUR', '유로'], ['GBP', '영국 파운드'],
+  ['CNY', '중국 위안'], ['TWD', '대만 달러'], ['PHP', '필리핀 페소'], ['MYR', '말레이시아 링깃'], ['IDR', '인도네시아 루피아'],
+]
+
+const COUNTRY_OPTIONS = [
+  ['VN', '베트남', 'VND'], ['KR', '대한민국', 'KRW'], ['US', '미국', 'USD'], ['JP', '일본', 'JPY'],
+  ['TH', '태국', 'THB'], ['SG', '싱가포르', 'SGD'], ['EU', '유럽', 'EUR'], ['GB', '영국', 'GBP'],
+  ['CN', '중국', 'CNY'], ['TW', '대만', 'TWD'], ['PH', '필리핀', 'PHP'], ['MY', '말레이시아', 'MYR'], ['ID', '인도네시아', 'IDR'],
+]
+
+function parseCalendarDate(dateText) {
+  const [year, month, day] = String(dateText || '').split('-').map(Number)
+  return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0)
+}
+
+function addDaysToDateText(dateText, days) {
+  const [year, month, day] = String(dateText || '').split('-').map(Number)
+  const date = new Date(Date.UTC(year, (month || 1) - 1, (day || 1) + days))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function getLocalDateText(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 function getScheduleMapUrl(schedule, trip) {
   const storedUrl = schedule.memo?.match(/지도:\s*(https?:\/\/[^\s·]+)/i)?.[1]
@@ -19,14 +46,86 @@ function getScheduleMapUrl(schedule, trip) {
 }
 
 function getTripCountdown(trip) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const start = new Date(`${trip.startDate}T00:00:00`)
-  const end = new Date(`${trip.endDate}T00:00:00`)
+  const todayText = getLocalDateText()
+  const today = parseCalendarDate(todayText)
+  const start = parseCalendarDate(trip.startDate)
   const dayMs = 24 * 60 * 60 * 1000
-  if (today < start) return `D-${Math.ceil((start - today) / dayMs)}`
-  if (today <= end) return `여행중 · DAY ${Math.floor((today - start) / dayMs) + 1}`
+  if (todayText < trip.startDate) return `D-${Math.round((start - today) / dayMs)}`
+  if (todayText <= trip.endDate) return `여행중 · DAY ${Math.round((today - start) / dayMs) + 1}`
   return '여행 완료'
+}
+
+function getTripPhaseLabel(trip) {
+  const today = getLocalDateText()
+  if (today < trip.startDate) return '여행을 준비해요 ✈️'
+  if (today <= trip.endDate) return '즐거운 여행 중이에요 🌏'
+  return '여행을 추억해요 📸'
+}
+
+function classifyLegacyCost(category, title) {
+  const text = `${category} ${title}`.toLowerCase()
+  if (/항공|비행|flight/.test(text)) return 'flight'
+  if (/숙소|호텔|hotel/.test(text)) return 'accommodation'
+  if (/식사|카페|레스토랑|뷔페|food/.test(text)) return 'food'
+  if (/이동|그랩|grab|택시|교통/.test(text)) return 'transport'
+  if (/쇼핑|마트|몰|시장/.test(text)) return 'shopping'
+  if (/관광|마사지|스파|투어/.test(text)) return 'activity'
+  return 'other'
+}
+
+function parseLegacyPrice(priceText) {
+  return {
+    amount: Number(priceText.replace(/[^0-9]/g, '')) || 0,
+    currency: priceText.includes('₩') ? 'KRW' : priceText.includes('$') ? 'USD' : 'VND',
+  }
+}
+
+function buildTripBudgetSummary(trip, schedules = [], expenses = [], exchangeRates = null) {
+  const categoryOf = (item) => item.costCategory || item.cost_category || 'other'
+  const paymentOf = (item) => item.paymentMethod || item.payment_method || 'either'
+  const currencyOf = (item) => item.costCurrency || item.cost_currency || trip.currency || 'VND'
+  const summarize = (label, matcher, prepaid = false) => {
+    const matches = schedules.filter(matcher)
+    const amounts = {}
+    const actuals = {}
+    matches.forEach((item) => {
+      const currency = currencyOf(item)
+      amounts[currency] = (amounts[currency] || 0) + Number(item.estimatedCost ?? item.estimated_cost ?? 0)
+      if (item.completed) actuals[currency] = (actuals[currency] || 0) + Number(item.actualCost ?? item.actual_cost ?? 0)
+    })
+    return {
+      label,
+      prepaid,
+      amounts: Object.entries(amounts),
+      actuals: Object.entries(actuals),
+      fallbackCurrency: trip.currency || 'VND',
+    }
+  }
+  const usedByCurrency = schedules.reduce((totals, item) => {
+    const isPrepaid = paymentOf(item) === 'prepaid' || ['flight', 'accommodation'].includes(categoryOf(item))
+    const used = isPrepaid
+      ? Number(item.estimatedCost ?? item.estimated_cost ?? 0)
+      : item.completed ? Number(item.actualCost ?? item.actual_cost ?? 0) : 0
+    const currency = currencyOf(item)
+    return { ...totals, [currency]: (totals[currency] || 0) + used }
+  }, {})
+  expenses.filter((item) => !(item.scheduleItemId || item.schedule_item_id)).forEach((item) => {
+    const currency = item.currency || trip.currency || 'VND'
+    usedByCurrency[currency] = (usedByCurrency[currency] || 0) + Number(item.amount || 0)
+  })
+  const totalCurrencies = Object.entries(usedByCurrency).filter(([, amount]) => amount > 0)
+  const baseCurrency = 'KRW'
+  const canConvert = Boolean(exchangeRates?.[baseCurrency]) && totalCurrencies.every(([currency]) => exchangeRates[currency])
+  const convertedTotal = canConvert
+    ? totalCurrencies.reduce((sum, [currency, amount]) => sum + (amount / exchangeRates[currency]) * exchangeRates[baseCurrency], 0)
+    : (usedByCurrency[baseCurrency] || 0)
+  return [
+    { label: '총 사용금액', totals: totalCurrencies, convertedTotal, currency: baseCurrency, canConvert },
+    summarize('호텔', (item) => categoryOf(item) === 'accommodation', true),
+    summarize('현금', (item) => !['flight', 'accommodation'].includes(categoryOf(item)) && paymentOf(item) === 'cash'),
+    summarize('카드', (item) => !['flight', 'accommodation'].includes(categoryOf(item)) && ['card', 'either'].includes(paymentOf(item))),
+    summarize('항공', (item) => categoryOf(item) === 'flight', true),
+  ]
 }
 
 async function openGrabForSchedule(schedule, trip) {
@@ -50,6 +149,7 @@ function App() {
   const [places, setPlaces] = useState([])
   const [schedules, setSchedules] = useState([])
   const [expenses, setExpenses] = useState([])
+  const [tripBudgetItems, setTripBudgetItems] = useState({ schedules: {}, expenses: {} })
   const [members, setMembers] = useState([])
   const [session, setSession] = useState(null)
   const [selectedTripId, setSelectedTripId] = useState(null)
@@ -61,14 +161,44 @@ function App() {
   const [itemLoading, setItemLoading] = useState(false)
   const [itemMessage, setItemMessage] = useState('')
   const [editingItem, setEditingItem] = useState(null)
+  const [excelPreview, setExcelPreview] = useState([])
+  const [excelFileName, setExcelFileName] = useState('')
   const [placeDraft, setPlaceDraft] = useState({ name: '', address: '', memo: '', googlePlaceId: '', googleMapsUrl: '', latitude: '', longitude: '' })
+  const [schedulePlaceDraft, setSchedulePlaceDraft] = useState({ place: '', address: '' })
+  const [scheduleAgentNote, setScheduleAgentNote] = useState('')
+  const [scheduleAgentLoading, setScheduleAgentLoading] = useState(false)
+  const [scheduleVoiceListening, setScheduleVoiceListening] = useState(false)
+  const [tripCountry, setTripCountry] = useState('VN')
+  const [tripCurrency, setTripCurrency] = useState('VND')
+  const [tripStartDate, setTripStartDate] = useState('')
+  const [tripEndDate, setTripEndDate] = useState('')
+  const [exchangeRates, setExchangeRates] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('travel-exchange-rates'))?.rates || null } catch { return null }
+  })
   const excelInputRef = useRef(null)
+  const scheduleFormRef = useRef(null)
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
     return () => data.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then((response) => {
+        if (!response.ok) throw new Error('환율 요청 실패')
+        return response.json()
+      })
+      .then((data) => {
+        if (!active || !data.rates) return
+        setExchangeRates(data.rates)
+        localStorage.setItem('travel-exchange-rates', JSON.stringify({ rates: data.rates, updatedAt: Date.now() }))
+      })
+      .catch(() => {})
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -92,10 +222,12 @@ function App() {
     let active = true
     const loadTrips = async () => {
       setTripsLoading(true)
-      const { data, error } = await supabase
-        .from('trips')
-        .select('id,owner_id,title,destination,start_date,end_date,people,currency')
-        .order('start_date', { ascending: true })
+      const [tripsResult, schedulesResult, expensesResult] = await Promise.all([
+        supabase.from('trips').select('id,owner_id,title,destination,start_date,end_date,people,currency').order('start_date', { ascending: true }),
+        supabase.from('schedule_items').select('trip_id,title,place_name,memo,estimated_cost,actual_cost,completed,cost_category,payment_method,cost_currency'),
+        supabase.from('expenses').select('trip_id,schedule_item_id,category,title,amount,currency,memo'),
+      ])
+      const { data, error } = tripsResult
 
       if (!active) return
       if (error) {
@@ -112,6 +244,10 @@ function App() {
           currency: trip.currency,
         }))
         setTrips(mappedTrips)
+        setTripBudgetItems({
+          schedules: (schedulesResult.data || []).reduce((groups, item) => ({ ...groups, [item.trip_id]: [...(groups[item.trip_id] || []), item] }), {}),
+          expenses: (expensesResult.data || []).reduce((groups, item) => ({ ...groups, [item.trip_id]: [...(groups[item.trip_id] || []), item] }), {}),
+        })
         setSelectedTripId((current) => mappedTrips.some((trip) => trip.id === current) ? current : mappedTrips[0]?.id || null)
         setTripMessage('')
       }
@@ -143,7 +279,7 @@ function App() {
           .order('created_at', { ascending: true }),
         supabase
           .from('schedule_items')
-          .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,sort_order,reservation_status,reservation_site,reservation_reference,reservation_url')
+          .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,sort_order,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
           .eq('trip_id', selectedTripId)
           .order('day_date', { ascending: true })
           .order('start_time', { ascending: true }),
@@ -179,6 +315,9 @@ function App() {
           reservationSite: item.reservation_site,
           reservationReference: item.reservation_reference,
           reservationUrl: item.reservation_url,
+          costCategory: item.cost_category,
+          paymentMethod: item.payment_method,
+          costCurrency: item.cost_currency,
         })))
         setExpenses((expensesResult.data || []).map((expense) => ({
           id: expense.id,
@@ -233,6 +372,10 @@ function App() {
     } else if (!canEditTrip) {
       setItemMessage('보기 전용 멤버는 내용을 추가하거나 변경할 수 없습니다.')
     } else {
+      if (type === 'schedule') {
+        setSchedulePlaceDraft({ place: '', address: '' })
+        setScheduleAgentNote('')
+      }
       setDialog(type)
     }
   }
@@ -247,11 +390,25 @@ function App() {
         latitude: item.latitude ?? '', longitude: item.longitude ?? '',
       })
     }
+    if (type === 'schedule') {
+      setSchedulePlaceDraft({ place: item.place || '', address: item.address || '' })
+    }
+    if (type === 'trip') {
+      const country = COUNTRY_OPTIONS.find((option) => option[2] === item.currency)
+      setTripCountry(country?.[0] || 'VN')
+      setTripCurrency(item.currency || 'VND')
+      setTripStartDate(item.startDate || '')
+      setTripEndDate(item.endDate || item.startDate || '')
+    }
     setDialog(`${type}-edit`)
   }
 
   const openTripDialog = () => {
     setTripMessage('')
+    setTripCountry('VN')
+    setTripCurrency('VND')
+    setTripStartDate('')
+    setTripEndDate('')
     setDialog(session ? 'trip' : 'auth')
   }
 
@@ -268,9 +425,11 @@ function App() {
     const startDate = String(form.get('startDate'))
     const endDate = String(form.get('endDate'))
     const people = Number(form.get('people'))
+    const currency = String(form.get('currency') || 'VND')
 
     if (endDate < startDate) {
-      setTripMessage('도착일은 출발일보다 빠를 수 없습니다.')
+      setTripEndDate(startDate)
+      setTripMessage('도착일은 출발일보다 빠를 수 없습니다. 날짜를 다시 확인해 주세요.')
       return
     }
 
@@ -283,10 +442,10 @@ function App() {
         start_date: startDate,
         end_date: endDate,
         people,
-        currency: 'VND',
+        currency,
       }
     const query = editingItem?.type === 'trip'
-      ? supabase.from('trips').update({ title, destination, start_date: startDate, end_date: endDate, people }).eq('id', editingItem.item.id)
+      ? supabase.from('trips').update({ title, destination, start_date: startDate, end_date: endDate, people, currency }).eq('id', editingItem.item.id)
       : supabase.from('trips').insert(values)
     const { data, error } = await query
       .select('id,owner_id,title,destination,start_date,end_date,people,currency')
@@ -373,6 +532,89 @@ function App() {
     setPlaceDraft((current) => ({ ...current, ...place }))
   }, [])
 
+  const selectScheduleGooglePlace = useCallback((place) => {
+    setSchedulePlaceDraft({ place: place.name || '', address: place.address || '' })
+  }, [])
+
+  const startScheduleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setItemMessage('이 기기에서는 앱 내 음성 인식을 지원하지 않습니다. 휴대폰 키보드의 마이크 버튼을 이용해 주세요.')
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'ko-KR'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.onstart = () => { setScheduleVoiceListening(true); setItemMessage('') }
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || ''
+      setScheduleAgentNote((current) => `${current}${current ? ' ' : ''}${transcript}`)
+    }
+    recognition.onerror = () => setItemMessage('음성을 인식하지 못했습니다. 마이크 권한을 확인하거나 다시 말해 주세요.')
+    recognition.onend = () => setScheduleVoiceListening(false)
+    recognition.start()
+  }
+
+  const analyzeScheduleAgentNote = async () => {
+    if (!scheduleAgentNote.trim() || !selectedTrip || !supabase) {
+      setItemMessage('만들고 싶은 일정을 말하거나 글로 입력해 주세요.')
+      return
+    }
+    setScheduleAgentLoading(true)
+    setItemMessage('AI가 일정 내용을 정리하고 있습니다...')
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-schedule-draft', {
+        body: {
+          note: scheduleAgentNote,
+          selectedDate: editingItem?.item.date || selectedScheduleDate || selectedTrip.startDate,
+          trip: {
+            title: selectedTrip.title,
+            destination: selectedTrip.destination,
+            startDate: selectedTrip.startDate,
+            endDate: selectedTrip.endDate,
+            currency: selectedTrip.currency || 'VND',
+          },
+        },
+      })
+      if (error) {
+        let message = error.message
+        if (error.context instanceof Response) {
+          const details = await error.context.json().catch(() => null)
+          if (details?.error) message = details.error
+        }
+        throw new Error(message)
+      }
+      const draft = data?.draft
+      const form = scheduleFormRef.current
+      if (!draft || !form) throw new Error('일정 초안을 받지 못했습니다.')
+      const values = {
+        title: draft.title,
+        date: draft.day_date,
+        time: draft.start_time || '',
+        memo: draft.memo || '',
+        estimatedCost: draft.estimated_cost || 0,
+        costCategory: draft.cost_category,
+        paymentMethod: draft.payment_method,
+        costCurrency: draft.cost_currency,
+        reservationStatus: draft.reservation_status,
+        reservationSite: draft.reservation_site || '',
+        reservationReference: draft.reservation_reference || '',
+        reservationUrl: draft.reservation_url || '',
+      }
+      Object.entries(values).forEach(([name, value]) => {
+        const field = form.elements.namedItem(name)
+        if (field) field.value = value
+      })
+      setSchedulePlaceDraft({ place: draft.place_name || '', address: draft.address_candidate || '' })
+      setItemMessage(draft.warnings?.length ? `확인 필요: ${draft.warnings.join(' · ')}` : 'AI가 일정 초안을 채웠습니다. 내용을 확인하고 저장해 주세요.')
+    } catch (error) {
+      setItemMessage(`AI 일정 분석 실패: ${error.message}`)
+    } finally {
+      setScheduleAgentLoading(false)
+    }
+  }
+
   const saveSchedule = async (event) => {
     event.preventDefault()
     if (!session || !selectedTripId || !supabase) return
@@ -396,12 +638,15 @@ function App() {
         reservation_site: String(form.get('reservationSite')).trim() || null,
         reservation_reference: String(form.get('reservationReference')).trim() || null,
         reservation_url: String(form.get('reservationUrl')).trim() || null,
+        cost_category: String(form.get('costCategory') || 'other'),
+        payment_method: String(form.get('paymentMethod') || 'either'),
+        cost_currency: String(form.get('costCurrency') || selectedTrip?.currency || 'VND'),
       }
     const query = editingItem?.type === 'schedule'
       ? supabase.from('schedule_items').update(values).eq('id', editingItem.item.id).eq('trip_id', selectedTripId)
       : supabase.from('schedule_items').insert({ ...values, trip_id: selectedTripId, created_by: session.user.id })
     const { data, error } = await query
-      .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url')
+      .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       .single()
     setItemLoading(false)
     if (error) {
@@ -423,6 +668,9 @@ function App() {
       reservationSite: data.reservation_site,
       reservationReference: data.reservation_reference,
       reservationUrl: data.reservation_url,
+      costCategory: data.cost_category,
+      paymentMethod: data.payment_method,
+      costCurrency: data.cost_currency,
     }
     setSchedules((current) => (editingItem?.type === 'schedule'
       ? current.map((item) => item.id === savedSchedule.id ? savedSchedule : item)
@@ -436,6 +684,8 @@ function App() {
     event.preventDefault()
     if (!session || !selectedTripId || !supabase) return
     const form = new FormData(event.currentTarget)
+    const paymentMethod = String(form.get('paymentMethod') || '')
+    const memoText = String(form.get('memo')).replace(/^결제수단:\s*(현금|카드)\s*·?\s*/, '').trim()
     const values = {
       schedule_item_id: String(form.get('scheduleItemId')) || null,
       category: String(form.get('category')),
@@ -443,7 +693,7 @@ function App() {
       amount: Number(form.get('amount')),
       currency: String(form.get('currency')),
       spent_at: new Date(String(form.get('spentAt'))).toISOString(),
-      memo: String(form.get('memo')).trim() || null,
+      memo: [paymentMethod && `결제수단: ${paymentMethod}`, memoText].filter(Boolean).join(' · ') || null,
     }
     setItemLoading(true)
     setItemMessage('')
@@ -483,7 +733,7 @@ function App() {
     let actualCost = schedule.actualCost || 0
     if (completed) {
       const enteredCost = window.prompt(
-        '완료 금액을 입력하세요. (베트남 동)',
+        `완료 금액을 입력하세요. (${schedule.costCurrency || selectedTrip?.currency || 'VND'})`,
         String(schedule.actualCost || schedule.estimatedCost || 0),
       )
       if (enteredCost === null) return
@@ -513,7 +763,7 @@ function App() {
       completed: data.completed,
       actualCost: Number(data.actual_cost),
     } : item))
-    setItemMessage(data.completed ? `완료 처리했습니다. 실제 금액 ${Number(data.actual_cost).toLocaleString('ko-KR')}₫` : '완료를 취소했습니다.')
+    setItemMessage(data.completed ? `완료 처리했습니다. 실제 금액 ${formatMoney(Number(data.actual_cost), schedule.costCurrency || selectedTrip?.currency || 'VND')}` : '완료를 취소했습니다.')
   }
 
   const deleteItem = async (type, item) => {
@@ -624,20 +874,78 @@ function App() {
   const importScheduleExcel = async (event) => {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file || !selectedTrip || !session || !canEditTrip) return
+    if (!file) return
+    if (!selectedTrip || !session || !canEditTrip) {
+      setItemMessage('이 여행의 일정을 편집할 권한이 없습니다.')
+      return
+    }
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setItemMessage('Excel .xlsx 파일을 선택해 주세요.')
+      return
+    }
     setItemLoading(true)
-    setItemMessage('')
+    setItemMessage(`${file.name} 파일을 확인하고 있습니다...`)
     try {
-      const rows = await readScheduleWorkbook(file, selectedTrip)
+      let rows
+      let analysisWarnings = []
+      try {
+        rows = await readScheduleWorkbook(file, selectedTrip)
+      } catch (templateError) {
+        setItemMessage('여행온 양식과 다른 Excel입니다. AI가 내용을 정리하고 있습니다...')
+        const sheets = await readWorkbookForAi(file)
+        const { data, error } = await supabase.functions.invoke('analyze-trip-excel', {
+          body: {
+            trip: {
+              title: selectedTrip.title,
+              destination: selectedTrip.destination,
+              startDate: selectedTrip.startDate,
+              endDate: selectedTrip.endDate,
+              currency: selectedTrip.currency || 'VND',
+            },
+            sheets,
+          },
+        })
+        if (error) {
+          let message = error.message
+          if (error.context instanceof Response) {
+            const details = await error.context.json().catch(() => null)
+            if (details?.error) message = details.error
+          }
+          throw new Error(`${message} (양식 확인: ${templateError.message})`)
+        }
+        rows = data?.items || []
+        analysisWarnings = data?.warnings || []
+      }
+      setExcelPreview(rows)
+      setExcelFileName(file.name)
+      setDialog('excel-preview')
+      setItemMessage(analysisWarnings.length ? `AI 확인사항: ${analysisWarnings.join(' · ')}` : '')
+    } catch (error) {
+      setItemMessage(`Excel 분석 실패: ${error.message}`)
+    } finally {
+      setItemLoading(false)
+    }
+  }
+
+  const updateExcelPreview = (index, field, value) => {
+    setExcelPreview((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row))
+  }
+
+  const confirmExcelImport = async () => {
+    if (!selectedTrip || !session || !excelPreview.length) return
+    setItemLoading(true)
+    setItemMessage('분석한 일정을 저장하고 있습니다...')
+    try {
       const { data, error } = await supabase
         .from('schedule_items')
-        .insert(rows.map((row, index) => ({
+        .insert(excelPreview.map((row, index) => ({
           ...row,
+          estimated_cost: Number(row.estimated_cost || 0),
           trip_id: selectedTrip.id,
           created_by: session.user.id,
           sort_order: schedules.length + index,
         })))
-        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url')
+        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       if (error) throw error
       const imported = (data || []).map((item) => ({
         id: item.id,
@@ -654,11 +962,31 @@ function App() {
         reservationSite: item.reservation_site,
         reservationReference: item.reservation_reference,
         reservationUrl: item.reservation_url,
+        costCategory: item.cost_category,
+        paymentMethod: item.payment_method,
+        costCurrency: item.cost_currency,
       }))
       setSchedules((current) => [...current, ...imported].sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)))
       setItemMessage(`${imported.length}개의 일정을 Excel에서 가져왔습니다.`)
+      setExcelPreview([])
+      setExcelFileName('')
+      setDialog(null)
     } catch (error) {
       setItemMessage(`Excel 업로드 실패: ${error.message}`)
+    } finally {
+      setItemLoading(false)
+    }
+  }
+
+  const downloadExcelTemplate = async () => {
+    if (!selectedTrip) return
+    setItemLoading(true)
+    setItemMessage('Excel 양식을 만들고 있습니다...')
+    try {
+      await downloadScheduleTemplate(selectedTrip)
+      setItemMessage('Excel 양식을 열거나 저장해 주세요. 작성 후 이 화면에서 업로드하면 됩니다.')
+    } catch (error) {
+      setItemMessage(`Excel 양식 다운로드 실패: ${error.message}`)
     } finally {
       setItemLoading(false)
     }
@@ -678,9 +1006,7 @@ function App() {
       documentHtml.querySelectorAll('.day-section[id^="day"]').forEach((daySection) => {
         const dayIndex = Number(daySection.id.replace('day', ''))
         if (!Number.isInteger(dayIndex)) return
-        const dayDate = new Date(`${selectedTrip.startDate}T00:00:00`)
-        dayDate.setDate(dayDate.getDate() + dayIndex)
-        const date = dayDate.toISOString().slice(0, 10)
+        const date = addDaysToDateText(selectedTrip.startDate, dayIndex)
 
         daySection.querySelectorAll('.schedule-item').forEach((item, sortOrder) => {
           const rawTime = item.querySelector('.time')?.textContent.trim() || ''
@@ -691,7 +1017,8 @@ function App() {
           const priceText = item.querySelector('.price-tag')?.textContent.trim() || ''
           const mapUrl = item.querySelector('.map-btn')?.href || ''
           const cardText = item.querySelector('.card')?.textContent.replace(/\s+/g, ' ').trim() || ''
-          const vndCost = priceText.includes('₫') ? Number(priceText.replace(/[^0-9]/g, '')) || 0 : 0
+          const legacyPrice = parseLegacyPrice(priceText)
+          const paymentMethod = item.querySelector('.pay-badge.cash') ? 'cash' : item.querySelector('.pay-badge.card') ? 'card' : item.querySelector('.pay-badge.done') ? 'prepaid' : 'either'
           const memoParts = [category, rawTime && !time ? `시간: ${rawTime}` : '', cardText, mapUrl ? `지도: ${mapUrl}` : ''].filter(Boolean)
 
           rows.push({
@@ -700,8 +1027,11 @@ function App() {
             start_time: time,
             title,
             memo: memoParts.join(' · ').slice(0, 1800),
-            estimated_cost: vndCost,
+            estimated_cost: legacyPrice.amount,
             actual_cost: 0,
+            cost_category: classifyLegacyCost(category, title),
+            payment_method: paymentMethod,
+            cost_currency: legacyPrice.currency,
             completed: false,
             sort_order: sortOrder,
             reservation_status: item.querySelector('.pay-badge.done') ? 'booked' : 'none',
@@ -716,7 +1046,7 @@ function App() {
       }
 
       const { data, error } = await supabase.from('schedule_items').insert(rows)
-        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url')
+        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       if (error) throw error
       const imported = data.map((item) => ({
         id: item.id, date: item.day_date, time: item.start_time?.slice(0, 5) || '', title: item.title,
@@ -724,6 +1054,7 @@ function App() {
         estimatedCost: Number(item.estimated_cost), actualCost: Number(item.actual_cost),
         reservationStatus: item.reservation_status, reservationSite: item.reservation_site,
         reservationReference: item.reservation_reference, reservationUrl: item.reservation_url,
+        costCategory: item.cost_category, paymentMethod: item.payment_method, costCurrency: item.cost_currency,
       }))
       setSchedules((current) => [...current, ...imported].sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)))
       setItemMessage(`기존 하노이 일정 ${imported.length}개를 가져왔습니다.`)
@@ -777,9 +1108,7 @@ function App() {
       documentHtml.querySelectorAll('.day-section[id^="day"]').forEach((daySection) => {
         const dayIndex = Number(daySection.id.replace('day', ''))
         if (!Number.isInteger(dayIndex)) return
-        const dayDate = new Date(`${tripData.start_date}T00:00:00`)
-        dayDate.setDate(dayDate.getDate() + dayIndex)
-        const date = dayDate.toISOString().slice(0, 10)
+        const date = addDaysToDateText(tripData.start_date, dayIndex)
 
         daySection.querySelectorAll('.schedule-item').forEach((item, sortOrder) => {
           const rawTime = item.querySelector('.time')?.textContent.trim() || ''
@@ -790,7 +1119,8 @@ function App() {
           const priceText = item.querySelector('.price-tag')?.textContent.trim() || ''
           const mapUrl = item.querySelector('.map-btn')?.href || ''
           const cardText = item.querySelector('.card')?.textContent.replace(/\s+/g, ' ').trim() || ''
-          const vndCost = priceText.includes('₫') ? Number(priceText.replace(/[^0-9]/g, '')) || 0 : 0
+          const legacyPrice = parseLegacyPrice(priceText)
+          const paymentMethod = item.querySelector('.pay-badge.cash') ? 'cash' : item.querySelector('.pay-badge.card') ? 'card' : item.querySelector('.pay-badge.done') ? 'prepaid' : 'either'
           const memoParts = [category, rawTime && !time ? `시간: ${rawTime}` : '', cardText, mapUrl ? `지도: ${mapUrl}` : ''].filter(Boolean)
           rows.push({
             trip_id: tripData.id,
@@ -798,8 +1128,11 @@ function App() {
             start_time: time,
             title,
             memo: memoParts.join(' · ').slice(0, 1800),
-            estimated_cost: vndCost,
+            estimated_cost: legacyPrice.amount,
             actual_cost: 0,
+            cost_category: classifyLegacyCost(category, title),
+            payment_method: paymentMethod,
+            cost_currency: legacyPrice.currency,
             completed: false,
             sort_order: sortOrder,
             reservation_status: item.querySelector('.pay-badge.done') ? 'booked' : 'none',
@@ -839,8 +1172,8 @@ function App() {
       <main>
         <header className="topbar">
           <div>
-            <p className="eyebrow">안녕하세요 👋</p>
-            <h1>어디로 떠나볼까요?</h1>
+            <p className="eyebrow">{isTripDetail ? getTripPhaseLabel(selectedTrip) : '안녕하세요 👋'}</p>
+            {!isTripDetail && <h1>어디로 떠나볼까요?</h1>}
           </div>
           <button className="profile-button" type="button" aria-label="로그인과 내 프로필" onClick={() => setDialog('auth')}>{session ? (session.user.user_metadata?.name?.slice(0, 2) || 'MY') : '로그인'}</button>
         </header>
@@ -879,12 +1212,12 @@ function App() {
             <div><p className="section-label">Excel 일정 관리</p><h2 id="excel-title">양식으로 한 번에 만들기</h2></div>
             <p>양식을 내려받아 일정을 입력한 뒤 그대로 업로드하세요. 예약 사이트와 예약 링크도 함께 등록됩니다.</p>
             <div className="excel-actions">
-              <button type="button" onClick={() => downloadScheduleTemplate(selectedTrip)}>양식 다운로드</button>
+              <button type="button" onClick={downloadExcelTemplate} disabled={itemLoading}>양식 다운로드</button>
               <button type="button" onClick={() => exportTripSchedule(selectedTrip, schedules)} disabled={!schedules.length}>현재 일정 내보내기</button>
-              {canEditTrip && <button className="primary" type="button" onClick={() => excelInputRef.current?.click()} disabled={itemLoading}>Excel 업로드</button>}
+              {canEditTrip && <label className={`excel-upload-label primary${itemLoading ? ' is-disabled' : ''}`} htmlFor="schedule-excel-upload">Excel 업로드</label>}
               {isTripOwner && selectedTrip.destination.includes('하노이') && <button type="button" onClick={importLegacyHanoiSchedule} disabled={itemLoading}>기존 하노이 일정 가져오기</button>}
             </div>
-            <input ref={excelInputRef} className="visually-hidden" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importScheduleExcel} />
+            <input id="schedule-excel-upload" ref={excelInputRef} className="visually-hidden" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream" onChange={importScheduleExcel} disabled={itemLoading} />
           </section>
         )}
 
@@ -904,21 +1237,25 @@ function App() {
           </section>
         )}
 
-        {isTripDetail && schedules.length > 0 && (
+        {isTripDetail && (
           <section className="saved-section">
-            <p className="section-label">{selectedTrip?.title} · 일정</p>
-            <div className="schedule-day-tabs" role="tablist" aria-label="여행 날짜 선택">
+            <div className="section-heading">
+              <div><p className="section-label">{selectedTrip?.title} · 일정</p><h2>여행 일정</h2></div>
+              {canEditTrip && <button className="mini-add" type="button" onClick={() => openItemDialog('schedule')}>＋ 일정 추가</button>}
+            </div>
+            {schedules.length > 0 ? <>
+              <div className="schedule-day-tabs" role="tablist" aria-label="여행 날짜 선택">
               {scheduleDates.map((date, index) => {
-                const dateValue = new Date(`${date}T00:00:00`)
+                const dateValue = parseCalendarDate(date)
                 const hanoiLabels = ['도착', '미딩', '올드쿼터', '귀국']
                 const subtitle = selectedTrip.title.includes('하노이') ? hanoiLabels[index] : `${index + 1}일차`
                 return <button className={activeScheduleDate === date ? 'is-active' : ''} type="button" role="tab" aria-selected={activeScheduleDate === date} onClick={() => setSelectedScheduleDate(date)} key={date}><strong>{dateValue.getDate()}</strong><small>{new Intl.DateTimeFormat('ko-KR', { weekday: 'short' }).format(dateValue)} · {subtitle}</small></button>
               })}
-            </div>
-            <div className="saved-list">{visibleSchedules.map((schedule) => (
+              </div>
+              <div className="saved-list">{visibleSchedules.map((schedule) => (
               <div className={`saved-trip schedule-row ${schedule.completed ? 'is-completed' : ''}`} key={schedule.id}>
                 <span className="schedule-date"><strong>{schedule.time || '일정'}</strong><small>{schedule.time ? '시간' : schedule.date.slice(5)}</small></span>
-                <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {(schedule.completed ? schedule.actualCost : schedule.estimatedCost).toLocaleString('ko-KR')}₫</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
+                <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {formatMoney(schedule.completed ? schedule.actualCost : schedule.estimatedCost, schedule.costCurrency || selectedTrip?.currency || 'VND')}</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
                   <button type="button" onClick={() => openGrabForSchedule(schedule, selectedTrip)}>🚕 Grab</button>
@@ -928,9 +1265,10 @@ function App() {
                   <button className="danger" type="button" onClick={() => deleteItem('schedule', schedule)}>삭제</button>
                   </>}
                 </div>
-                {schedule.reservationUrl && <div className="reservation-link"><a href={schedule.reservationUrl} target="_blank" rel="noreferrer">{schedule.reservationSite || '예약 사이트'} 열기</a>{schedule.reservationReference && <span>예약번호 {schedule.reservationReference}</span>}</div>}
+                {(schedule.reservationSite || schedule.reservationReference || schedule.reservationUrl) && <div className="reservation-link">{schedule.reservationUrl ? <a href={schedule.reservationUrl} target="_blank" rel="noreferrer">{schedule.reservationSite || '예약 사이트'} 열기</a> : <strong>{schedule.reservationSite || '예약 정보'}</strong>}{schedule.reservationReference && <span>예약번호 {schedule.reservationReference}</span>}</div>}
               </div>
-            ))}</div>
+              ))}</div>
+            </> : <div className="schedule-empty"><span aria-hidden="true">🗓️</span><strong>아직 등록된 일정이 없어요</strong><p>날짜와 시간을 선택해 첫 일정을 만들어 보세요.</p>{canEditTrip && <button type="button" onClick={() => openItemDialog('schedule')}>첫 일정 추가</button>}</div>}
           </section>
         )}
 
@@ -991,14 +1329,14 @@ function App() {
                 <button className="trip-select" type="button" onClick={() => openTripDetail(trip.id)}>
                   <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><span className="trip-card-status"><em>{getTripCountdown(trip)}</em><b>{selectedTripId === trip.id ? '선택됨' : '선택'}</b></span>
                 </button>
-                {trip.title.includes('하노이') && (
-                  <div className="trip-budget-summary" aria-label="하노이 여행 예산 요약">
-                    <span><small>숙소</small><strong>₩765,669</strong></span>
-                    <span><small>현금(동)</small><strong>9,040,000₫</strong></span>
-                    <span><small>현지카드(동)</small><strong>4,300,000₫</strong></span>
-                    <span><small>항공</small><strong>₩1,410,071</strong></span>
-                  </div>
-                )}
+                <div className="trip-budget-summary" aria-label={`${trip.title} 예산 요약`}>
+                  {buildTripBudgetSummary(
+                    trip,
+                    trip.id === selectedTripId ? schedules : tripBudgetItems.schedules[trip.id],
+                    trip.id === selectedTripId ? expenses : tripBudgetItems.expenses[trip.id],
+                    exchangeRates,
+                  ).map((budget) => <span className={budget.totals ? 'is-total' : ''} key={budget.label}><small>{budget.label}</small>{budget.totals ? <><strong>{formatMoney(budget.convertedTotal, budget.currency)}</strong><em>{budget.canConvert ? '입력 통화 환산 · KRW' : budget.totals.length > 1 ? '환율 불러오는 중' : '사용 합계'}</em></> : <><strong>{budget.amounts.length ? budget.amounts.map(([currency, amount]) => formatMoney(amount, currency)).join(' + ') : formatMoney(0, budget.fallbackCurrency)}</strong><em>{budget.prepaid ? '선결제 금액' : `사용 ${budget.actuals.length ? budget.actuals.map(([currency, amount]) => formatMoney(amount, currency)).join(' + ') : formatMoney(0, budget.amounts[0]?.[0] || budget.fallbackCurrency)}`}</em></>}</span>)}
+                </div>
                 {trip.ownerId === session?.user.id && <div className="item-actions">
                   <button type="button" onClick={() => openEditDialog('trip', trip)}>수정</button>
                   <button className="danger" type="button" onClick={() => deleteTrip(trip)}>삭제</button>
@@ -1014,22 +1352,40 @@ function App() {
         {itemMessage && !dialog && <p className="data-status is-error" role="alert">{itemMessage}</p>}
 
         {screen === 'home' && session && trips.length > 0 && <button className="new-trip-button" type="button" onClick={openTripDialog}><span aria-hidden="true">＋</span> 새 여행 만들기</button>}
+        {isTripDetail && canEditTrip && <button className="schedule-fab" type="button" onClick={() => openItemDialog('schedule')} aria-label="새 일정 추가"><span aria-hidden="true">＋</span><b>일정</b></button>}
       </main>
 
       {session && <BottomNav />}
 
       {dialog && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
-          <section className="app-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <section className={`app-dialog${dialog === 'excel-preview' ? ' excel-preview-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="dialog-handle" />
-            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null) }} aria-label="닫기">×</button></div>
-            {dialog === 'auth' ? (
+            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null) }} aria-label="닫기">×</button></div>
+            {dialog === 'excel-preview' ? (
+              <div className="excel-preview-panel">
+                <p><strong>{excelFileName}</strong>에서 {excelPreview.length}개 일정을 찾았습니다. 잘못 분류된 내용은 여기서 고친 뒤 저장하세요.</p>
+                <div className="excel-preview-list">{excelPreview.map((row, index) => (
+                  <article className="excel-preview-row" key={`${row.day_date}-${row.start_time}-${index}`}>
+                    <div className="excel-preview-title"><strong>{row.day_date} {row.start_time} · {row.title}</strong><button type="button" onClick={() => setExcelPreview((current) => current.filter((_, rowIndex) => rowIndex !== index))}>삭제</button></div>
+                    <div className="form-row"><label>비용 분류<select value={row.cost_category} onChange={(event) => updateExcelPreview(index, 'cost_category', event.target.value)}><option value="flight">항공</option><option value="accommodation">숙소</option><option value="food">식비</option><option value="transport">교통</option><option value="activity">관광·체험</option><option value="shopping">쇼핑</option><option value="other">기타</option></select></label><label>결제 구분<select value={row.payment_method} onChange={(event) => updateExcelPreview(index, 'payment_method', event.target.value)}><option value="cash">현금</option><option value="card">카드</option><option value="prepaid">선결제</option></select></label></div>
+                    <div className="form-row"><label>예상 비용<input type="number" min="0" inputMode="decimal" value={row.estimated_cost} onChange={(event) => updateExcelPreview(index, 'estimated_cost', event.target.value)} /></label><label>통화<select value={row.cost_currency} onChange={(event) => updateExcelPreview(index, 'cost_currency', event.target.value)}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>
+                  </article>
+                ))}</div>
+                {itemMessage && <p className="auth-message" role="alert">{itemMessage}</p>}
+                <button className="dialog-submit" type="button" onClick={confirmExcelImport} disabled={itemLoading || !excelPreview.length}>{itemLoading ? '저장 중…' : `${excelPreview.length}개 일정 저장`}</button>
+              </div>
+            ) : dialog === 'auth' ? (
               <AuthPanel session={session} onClose={() => setDialog(null)} />
             ) : dialog === 'trip' || dialog === 'trip-edit' ? (
               <form onSubmit={saveTrip}>
+                <div className="form-row">
+                  <label>국가<select name="country" value={tripCountry} onChange={(event) => { const next = COUNTRY_OPTIONS.find((option) => option[0] === event.target.value); setTripCountry(event.target.value); setTripCurrency(next?.[2] || 'USD') }}>{COUNTRY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+                  <label>기본 통화<select name="currency" value={tripCurrency} onChange={(event) => setTripCurrency(event.target.value)}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+                </div>
                 <label>여행 이름<input name="title" required placeholder="예: 도쿄 가족 여행" defaultValue={editingItem?.item.title || ''} /></label>
                 <label>여행지<input name="destination" required placeholder="예: 도쿄" defaultValue={editingItem?.item.destination || ''} /></label>
-                <div className="form-row"><label>출발일<input name="startDate" type="date" required defaultValue={editingItem?.item.startDate || ''} /></label><label>도착일<input name="endDate" type="date" required defaultValue={editingItem?.item.endDate || ''} /></label></div>
+                <div className="form-row"><label>출발일<input name="startDate" type="date" required value={tripStartDate} onChange={(event) => { const nextStart = event.target.value; setTripStartDate(nextStart); if (!tripEndDate) { setTripEndDate(nextStart); setTripMessage('') } else if (tripEndDate < nextStart) { setTripEndDate(nextStart); setTripMessage('도착일은 출발일보다 빠를 수 없어 출발일과 같은 날짜로 변경했습니다.') } else { setTripMessage('') } }} /></label><label>도착일<input name="endDate" type="date" required min={tripStartDate || undefined} value={tripEndDate} onChange={(event) => { const nextEnd = event.target.value; if (tripStartDate && nextEnd < tripStartDate) { setTripEndDate(tripStartDate); setTripMessage('도착일은 출발일보다 빠를 수 없습니다.') } else { setTripEndDate(nextEnd); setTripMessage('') } }} /></label></div>
                 <label>인원<input name="people" type="number" inputMode="numeric" min="1" defaultValue={editingItem?.item.people || 1} required /></label>
                 {tripMessage && <p className="auth-message" role="alert">{tripMessage}</p>}
                 <button className="dialog-submit" type="submit" disabled={tripsLoading}>{tripsLoading ? '저장 중…' : '여행 저장'}</button>
@@ -1047,9 +1403,10 @@ function App() {
                 <label>사용 내역<input name="title" required placeholder="예: 가족 저녁 식사" defaultValue={editingItem?.item.title || ''} /></label>
                 <div className="form-row">
                   <label>카테고리<select name="category" defaultValue={editingItem?.item.category || '식비'}><option>식비</option><option>교통</option><option>숙소</option><option>관광</option><option>쇼핑</option><option>기타</option></select></label>
-                  <label>통화<select name="currency" defaultValue={editingItem?.item.currency || selectedTrip?.currency || 'VND'}><option value="VND">베트남 동</option><option value="KRW">한국 원</option><option value="USD">미국 달러</option></select></label>
+                  <label>통화<select name="currency" defaultValue={editingItem?.item.currency || selectedTrip?.currency || 'VND'}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
                 </div>
                 <label>금액<input name="amount" type="number" inputMode="decimal" min="0" step="0.01" required placeholder="0" defaultValue={editingItem?.item.amount ?? ''} /></label>
+                <label>결제 수단<select name="paymentMethod" defaultValue={editingItem?.item.memo?.match(/결제수단:\s*(현금|카드)/)?.[1] || ''}><option value="">선택 안 함</option><option value="현금">현금</option><option value="카드">현지 카드</option></select></label>
                 <label>사용 일시<input name="spentAt" type="datetime-local" required defaultValue={toLocalDateTimeValue(editingItem?.item.spentAt)} /></label>
                 <label>연결 일정<select name="scheduleItemId" defaultValue={editingItem?.item.scheduleItemId || ''}><option value="">일정과 연결하지 않음</option>{schedules.map((schedule) => <option value={schedule.id} key={schedule.id}>{schedule.date} {schedule.time} · {schedule.title}</option>)}</select></label>
                 <label>메모<textarea name="memo" maxLength="300" placeholder="결제 수단이나 상세 내용을 기록하세요" defaultValue={editingItem?.item.memo || ''} /></label>
@@ -1057,18 +1414,31 @@ function App() {
                 <button className="dialog-submit" type="submit" disabled={itemLoading}>{itemLoading ? '저장 중…' : '경비 저장'}</button>
               </form>
             ) : dialog === 'schedule' || dialog === 'schedule-edit' ? (
-              <form onSubmit={saveSchedule}>
+              <form ref={scheduleFormRef} onSubmit={saveSchedule}>
+                <section className="schedule-agent-box">
+                  <div className="schedule-agent-heading"><span aria-hidden="true">✨</span><div><strong>AI 일정 도우미</strong><small>말하거나 한 문장으로 입력하면 아래 항목을 자동으로 채워요.</small></div></div>
+                  <textarea value={scheduleAgentNote} onChange={(event) => setScheduleAgentNote(event.target.value)} placeholder="예: 9월 11일 오전 10시 롯데몰 방문, 점심 50만 동 카드 결제 예정" maxLength="3000" />
+                  <div className="schedule-agent-actions">
+                    <button type="button" className={scheduleVoiceListening ? 'is-listening' : ''} onClick={startScheduleVoiceInput} disabled={scheduleVoiceListening || scheduleAgentLoading}>{scheduleVoiceListening ? '듣는 중…' : '🎤 음성 입력'}</button>
+                    <button type="button" className="primary" onClick={analyzeScheduleAgentNote} disabled={scheduleAgentLoading || !scheduleAgentNote.trim()}>{scheduleAgentLoading ? '정리 중…' : '✨ AI로 채우기'}</button>
+                  </div>
+                  {itemMessage && <p className="auth-message schedule-agent-message" role="status">{itemMessage}</p>}
+                </section>
                 <label>일정 이름<input name="title" required placeholder="예: 공항으로 출발" defaultValue={editingItem?.item.title || ''} /></label>
-                <div className="form-row"><label>날짜<input name="date" type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} defaultValue={editingItem?.item.date || ''} required /></label><label>시간<input name="time" type="time" defaultValue={editingItem?.item.time || ''} required /></label></div>
-                <label>장소<input name="place" placeholder="예: 인천국제공항" defaultValue={editingItem?.item.place || ''} /></label>
-                <label>주소<input name="address" placeholder="지도에서 찾을 수 있는 주소" defaultValue={editingItem?.item.address || ''} /></label>
+                <div className="form-row"><label>날짜<input name="date" type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} defaultValue={editingItem?.item.date || selectedScheduleDate || selectedTrip?.startDate || ''} required /></label><label>시간<input name="time" type="time" defaultValue={editingItem?.item.time || ''} required /></label></div>
+                <div className="schedule-map-search"><strong><span aria-hidden="true">📍</span> Google 지도에서 장소 찾기</strong><GooglePlaceSearch onSelect={selectScheduleGooglePlace} /></div>
+                <label>장소<input name="place" placeholder="예: 인천국제공항" value={schedulePlaceDraft.place} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, place: event.target.value }))} /></label>
+                <label>주소<input name="address" placeholder="Google 지도에서 선택하면 자동 입력됩니다" value={schedulePlaceDraft.address} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, address: event.target.value }))} /></label>
                 <label>메모<textarea name="memo" maxLength="300" placeholder="준비물이나 세부 내용을 기록하세요" defaultValue={editingItem?.item.memo || ''} /></label>
-                <label>예상 비용<input name="estimatedCost" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={editingItem?.item.estimatedCost || 0} /></label>
+                <div className="form-row"><label>비용 분류<select name="costCategory" defaultValue={editingItem?.item.costCategory || 'other'}><option value="flight">항공</option><option value="accommodation">숙소</option><option value="food">식비</option><option value="transport">교통</option><option value="activity">관광·체험</option><option value="shopping">쇼핑</option><option value="other">기타</option></select></label><label>결제 방법<select name="paymentMethod" defaultValue={editingItem?.item.paymentMethod || 'either'}><option value="cash">현금만</option><option value="card">카드 가능</option><option value="either">현금·카드 모두</option><option value="prepaid">예약·선결제</option></select></label></div>
+                <div className="form-row"><label>예상 비용<input name="estimatedCost" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={editingItem?.item.estimatedCost || 0} /></label><label>통화<select name="costCurrency" defaultValue={editingItem?.item.costCurrency || selectedTrip?.currency || 'VND'}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>
                 <div className="form-row"><label>예약 상태<select name="reservationStatus" defaultValue={editingItem?.item.reservationStatus || 'none'}><option value="none">예약 없음</option><option value="planned">예약 예정</option><option value="booked">예약 완료</option><option value="cancelled">취소됨</option></select></label><label>예약 사이트<input name="reservationSite" placeholder="예: Agoda, Klook" defaultValue={editingItem?.item.reservationSite || ''} /></label></div>
                 <label>예약번호<input name="reservationReference" placeholder="예약번호 또는 티켓번호" defaultValue={editingItem?.item.reservationReference || ''} /></label>
                 <label>예약 링크<input name="reservationUrl" type="url" placeholder="https://..." defaultValue={editingItem?.item.reservationUrl || ''} /></label>
-                {itemMessage && <p className="auth-message" role="alert">{itemMessage}</p>}
-                <button className="dialog-submit" type="submit" disabled={itemLoading}>{itemLoading ? '저장 중…' : '일정 저장'}</button>
+                <div className="dialog-actions">
+                  <button className="dialog-cancel" type="button" onClick={() => { setDialog(null); setEditingItem(null); setItemMessage('') }} disabled={itemLoading}>취소</button>
+                  <button className="dialog-submit" type="submit" disabled={itemLoading}>{itemLoading ? '저장 중…' : '일정 저장'}</button>
+                </div>
               </form>
             ) : (
               <form onSubmit={savePlace}>
