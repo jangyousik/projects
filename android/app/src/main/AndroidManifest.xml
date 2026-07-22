@@ -3,6 +3,7 @@
 
     <queries>
         <package android:name="com.google.ar.lens" />
+        <package android:name="com.google.android.apps.translate" />
     </queries>
 
     <application
@@ -51,4 +52,5 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 </manifest>

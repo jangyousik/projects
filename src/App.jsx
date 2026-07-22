@@ -536,12 +536,29 @@ function App() {
     setSchedulePlaceDraft({ place: place.name || '', address: place.address || '' })
   }, [])
 
-  const startScheduleVoiceInput = () => {
+  const startScheduleVoiceInput = async () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
       setItemMessage('이 기기에서는 앱 내 음성 인식을 지원하지 않습니다. 휴대폰 키보드의 마이크 버튼을 이용해 주세요.')
       return
     }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setItemMessage('이 환경에서는 마이크 권한을 요청할 수 없습니다. Chrome 또는 설치된 앱에서 다시 시도해 주세요.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+    } catch (error) {
+      const denied = error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError'
+      setItemMessage(denied
+        ? '마이크 권한이 차단되어 있습니다. 휴대폰 설정 → 앱 → 여행온 → 권한 → 마이크를 허용해 주세요.'
+        : '마이크를 사용할 수 없습니다. 다른 앱에서 마이크를 사용 중인지 확인해 주세요.')
+      return
+    }
+
     const recognition = new SpeechRecognition()
     recognition.lang = 'ko-KR'
     recognition.interimResults = false
@@ -551,9 +568,23 @@ function App() {
       const transcript = event.results?.[0]?.[0]?.transcript || ''
       setScheduleAgentNote((current) => `${current}${current ? ' ' : ''}${transcript}`)
     }
-    recognition.onerror = () => setItemMessage('음성을 인식하지 못했습니다. 마이크 권한을 확인하거나 다시 말해 주세요.')
+    recognition.onerror = (event) => {
+      const messages = {
+        'not-allowed': '마이크 권한이 차단되어 있습니다. 휴대폰 설정에서 여행온의 마이크 권한을 허용해 주세요.',
+        'audio-capture': '마이크를 찾지 못했습니다. 기기의 마이크 상태를 확인해 주세요.',
+        'no-speech': '음성이 들리지 않았습니다. 마이크 가까이에서 다시 말해 주세요.',
+        network: '음성 인식 서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.',
+        aborted: '음성 입력이 취소되었습니다.',
+      }
+      setItemMessage(messages[event.error] || `음성 인식 오류가 발생했습니다. (${event.error || '알 수 없음'})`)
+    }
     recognition.onend = () => setScheduleVoiceListening(false)
-    recognition.start()
+    try {
+      recognition.start()
+    } catch {
+      setScheduleVoiceListening(false)
+      setItemMessage('음성 인식을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+    }
   }
 
   const analyzeScheduleAgentNote = async () => {
@@ -607,7 +638,10 @@ function App() {
         if (field) field.value = value
       })
       setSchedulePlaceDraft({ place: draft.place_name || '', address: draft.address_candidate || '' })
-      setItemMessage(draft.warnings?.length ? `확인 필요: ${draft.warnings.join(' · ')}` : 'AI가 일정 초안을 채웠습니다. 내용을 확인하고 저장해 주세요.')
+      const quotaText = data?.quota ? ` · 오늘 ${data.quota.remaining}회 남음` : ''
+      setItemMessage(draft.warnings?.length
+        ? `입력 가능한 항목을 먼저 채웠습니다. 저장 전 확인: ${draft.warnings.join(' · ')}${quotaText}`
+        : `AI가 입력 가능한 항목을 모두 채웠습니다. 내용을 확인하고 저장해 주세요.${quotaText}`)
     } catch (error) {
       setItemMessage(`AI 일정 분석 실패: ${error.message}`)
     } finally {
@@ -888,6 +922,7 @@ function App() {
     try {
       let rows
       let analysisWarnings = []
+      let aiQuota = null
       try {
         rows = await readScheduleWorkbook(file, selectedTrip)
       } catch (templateError) {
@@ -915,11 +950,13 @@ function App() {
         }
         rows = data?.items || []
         analysisWarnings = data?.warnings || []
+        aiQuota = data?.quota || null
       }
       setExcelPreview(rows)
       setExcelFileName(file.name)
       setDialog('excel-preview')
-      setItemMessage(analysisWarnings.length ? `AI 확인사항: ${analysisWarnings.join(' · ')}` : '')
+      const quotaText = aiQuota ? `오늘 AI ${aiQuota.remaining}회 남음` : ''
+      setItemMessage(analysisWarnings.length ? `AI 확인사항: ${analysisWarnings.join(' · ')}${quotaText ? ` · ${quotaText}` : ''}` : quotaText)
     } catch (error) {
       setItemMessage(`Excel 분석 실패: ${error.message}`)
     } finally {
@@ -1241,7 +1278,19 @@ function App() {
           <section className="saved-section">
             <div className="section-heading">
               <div><p className="section-label">{selectedTrip?.title} · 일정</p><h2>여행 일정</h2></div>
-              {canEditTrip && <button className="mini-add" type="button" onClick={() => openItemDialog('schedule')}>＋ 일정 추가</button>}
+              <div className="section-heading-actions">
+                <button
+                  className="mini-add secondary"
+                  type="button"
+                  aria-expanded={setupTripId === selectedTripId}
+                  onClick={() => {
+                    const willOpen = setupTripId !== selectedTripId
+                    setSetupTripId(willOpen ? selectedTripId : null)
+                    if (willOpen) setTimeout(() => document.getElementById('excel-title')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+                  }}
+                >{setupTripId === selectedTripId ? 'Excel 닫기' : 'Excel 관리'}</button>
+                {canEditTrip && <button className="mini-add" type="button" onClick={() => openItemDialog('schedule')}>＋ 일정 추가</button>}
+              </div>
             </div>
             {schedules.length > 0 ? <>
               <div className="schedule-day-tabs" role="tablist" aria-label="여행 날짜 선택">

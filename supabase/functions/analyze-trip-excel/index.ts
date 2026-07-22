@@ -87,6 +87,13 @@ Deno.serve(async (request) => {
     const serializedSheets = JSON.stringify(compactSheets)
     if (serializedSheets.length > 350_000) return jsonResponse({ error: 'Excel 내용이 너무 큽니다. 250행 이하로 나누어 주세요.' }, 413)
 
+    const { data: quota, error: quotaError } = await supabase.rpc('consume_ai_quota', { feature_name: 'trip-excel' })
+    if (quotaError) {
+      console.error('AI quota check failed', quotaError.message)
+      return jsonResponse({ error: 'AI 사용량을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 503)
+    }
+    if (!quota?.allowed) return jsonResponse({ error: quota?.message || 'AI 사용 한도에 도달했습니다.', code: quota?.code, retry_after: quota?.retry_after }, 429)
+
     const prompt = `여행 일정 Excel을 여행온 앱의 일정 데이터로 정리하세요.
 
 여행 정보:
@@ -115,6 +122,7 @@ ${serializedSheets}`
         model: 'gpt-5.6-sol',
         store: false,
         reasoning: { effort: 'low' },
+        max_output_tokens: 20000,
         input: prompt,
         text: {
           verbosity: 'low',
@@ -137,7 +145,7 @@ ${serializedSheets}`
     const result = JSON.parse(outputText)
     const validItems = result.items.filter((item: { day_date: string }) => item.day_date >= trip.startDate && item.day_date <= trip.endDate)
     if (!validItems.length) return jsonResponse({ error: '여행 기간 안에서 일정을 찾지 못했습니다.' }, 422)
-    return jsonResponse({ ...result, items: validItems })
+    return jsonResponse({ ...result, items: validItems, quota: { remaining: quota.remaining, limit: quota.limit } })
   } catch (error) {
     console.error(error)
     return jsonResponse({ error: error instanceof Error ? error.message : 'Excel 분석 중 오류가 발생했습니다.' }, 500)

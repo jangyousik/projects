@@ -4,6 +4,22 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 const ExternalApps = registerPlugin('ExternalApps')
 const fallbackWeather = { temperature: null, apparent: null, rain: null, code: null }
 
+const currencyMeta = {
+  VND: { name: '베트남 동', defaultAmount: 1000000, maximumFractionDigits: 0 },
+  JPY: { name: '일본 엔', defaultAmount: 10000, maximumFractionDigits: 0 },
+  USD: { name: '미국 달러', defaultAmount: 100, maximumFractionDigits: 2 },
+  KRW: { name: '한국 원', defaultAmount: 50000, maximumFractionDigits: 0 },
+  THB: { name: '태국 바트', defaultAmount: 1000, maximumFractionDigits: 0 },
+  SGD: { name: '싱가포르 달러', defaultAmount: 100, maximumFractionDigits: 2 },
+  EUR: { name: '유로', defaultAmount: 100, maximumFractionDigits: 2 },
+  GBP: { name: '영국 파운드', defaultAmount: 100, maximumFractionDigits: 2 },
+  CNY: { name: '중국 위안', defaultAmount: 1000, maximumFractionDigits: 0 },
+  TWD: { name: '대만 달러', defaultAmount: 1000, maximumFractionDigits: 0 },
+  PHP: { name: '필리핀 페소', defaultAmount: 1000, maximumFractionDigits: 0 },
+  MYR: { name: '말레이시아 링깃', defaultAmount: 1000, maximumFractionDigits: 0 },
+  IDR: { name: '인도네시아 루피아', defaultAmount: 1000000, maximumFractionDigits: 0 },
+}
+
 function weatherIcon(code) {
   if (code == null) return '🌤️'
   if (code === 0) return '☀️'
@@ -13,17 +29,31 @@ function weatherIcon(code) {
   return '🌤️'
 }
 
+function formatCurrency(amount, currency) {
+  const options = currencyMeta[currency] || currencyMeta.USD
+  return new Intl.NumberFormat('ko-KR', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: options.maximumFractionDigits,
+  }).format(amount)
+}
+
 export function TripLiveTools({ trip }) {
-  const cacheKey = useMemo(() => `trip-live-tools:${trip.destination}`, [trip.destination])
+  const currency = trip.currency || 'VND'
+  const meta = currencyMeta[currency] || { name: currency, defaultAmount: 100, maximumFractionDigits: 2 }
+  const cacheKey = useMemo(() => `trip-live-tools:${trip.destination}:${currency}`, [trip.destination, currency])
   const cached = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(cacheKey)) || {} } catch { return {} }
   }, [cacheKey])
   const [weather, setWeather] = useState(cached.weather || fallbackWeather)
-  const [vndToKrw, setVndToKrw] = useState(cached.vndToKrw || 0.0565)
-  const [usdToVnd, setUsdToVnd] = useState(cached.usdToVnd || 26180)
-  const [amount, setAmount] = useState(1000000)
+  const [rates, setRates] = useState(cached.rates || null)
+  const [amount, setAmount] = useState(meta.defaultAmount)
   const [updatedAt, setUpdatedAt] = useState(cached.updatedAt || null)
   const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    setAmount(meta.defaultAmount)
+  }, [currency, meta.defaultAmount])
 
   useEffect(() => {
     let active = true
@@ -46,24 +76,26 @@ export function TripLiveTools({ trip }) {
           rain: weatherData.daily?.precipitation_probability_max?.[0],
           code: weatherData.current?.weather_code,
         } : cached.weather || fallbackWeather
-        const nextVndToKrw = exchangeData.rates?.KRW && exchangeData.rates?.VND ? exchangeData.rates.KRW / exchangeData.rates.VND : cached.vndToKrw || 0.0565
-        const nextUsdToVnd = exchangeData.rates?.VND || cached.usdToVnd || 26180
+        const nextRates = exchangeData.rates || cached.rates || null
         const nextUpdatedAt = Date.now()
         setWeather(nextWeather)
-        setVndToKrw(nextVndToKrw)
-        setUsdToVnd(nextUsdToVnd)
+        setRates(nextRates)
         setUpdatedAt(nextUpdatedAt)
-        localStorage.setItem(cacheKey, JSON.stringify({ weather: nextWeather, vndToKrw: nextVndToKrw, usdToVnd: nextUsdToVnd, updatedAt: nextUpdatedAt }))
+        localStorage.setItem(cacheKey, JSON.stringify({ weather: nextWeather, rates: nextRates, updatedAt: nextUpdatedAt }))
       } catch {
-        if (active) setNotice(cached.updatedAt ? '마지막 저장 정보를 표시합니다.' : '실시간 정보를 불러오지 못했습니다.')
+        if (active) setNotice(cached.updatedAt ? '마지막으로 저장된 정보를 표시합니다.' : '실시간 정보를 불러오지 못했습니다.')
       }
     }
     load()
     return () => { active = false }
   }, [cacheKey, cached, trip.destination])
 
+  const localPerKrw = rates?.[currency] && rates?.KRW ? rates[currency] / rates.KRW : null
+  const localPerUsd = rates?.[currency] || null
+  const krwPerLocal = rates?.KRW && rates?.[currency] ? rates.KRW / rates[currency] : null
+
   const openLens = async () => {
-    setNotice('Google 렌즈를 실행하는 중입니다…')
+    setNotice('Google 렌즈를 실행하는 중입니다.')
     try {
       if (Capacitor.isNativePlatform()) {
         await ExternalApps.openGoogleLens()
@@ -74,6 +106,21 @@ export function TripLiveTools({ trip }) {
       setNotice('Google 렌즈 웹을 열었습니다.')
     } catch (error) {
       setNotice(error?.message || 'Google 렌즈를 실행하지 못했습니다.')
+    }
+  }
+
+  const openTranslate = async () => {
+    setNotice('Google 번역을 실행하는 중입니다.')
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await ExternalApps.openGoogleTranslate()
+        setNotice('Google 번역을 열었습니다.')
+        return
+      }
+      window.open('https://translate.google.com/?sl=auto&tl=ko&op=translate', '_blank', 'noopener,noreferrer')
+      setNotice('Google 번역 웹을 열었습니다.')
+    } catch (error) {
+      setNotice(error?.message || 'Google 번역을 실행하지 못했습니다.')
     }
   }
 
@@ -89,14 +136,26 @@ export function TripLiveTools({ trip }) {
         <strong>🌐 Google 렌즈</strong>
         <span>카메라로 메뉴판 바로 번역</span>
       </button>
+      <button className="live-tool-card translate-tool" type="button" onClick={openTranslate}>
+        <small>대화·문장 번역</small>
+        <strong>文 Google 번역</strong>
+        <span>번역 앱 바로 열기</span>
+      </button>
       <article className="live-tool-card rate-tool">
-        <small>오늘의 환율</small>
-        <div><strong>₩50,000 → 약 {Math.round(50000 / vndToKrw).toLocaleString('ko-KR')}₫</strong><strong>$100 → 약 {Math.round(usdToVnd * 100).toLocaleString('ko-KR')}₫</strong></div>
+        <small>오늘의 환율 · {meta.name}</small>
+        <div>
+          <strong>₩50,000 → {localPerKrw ? `약 ${formatCurrency(50000 * localPerKrw, currency)}` : '불러오는 중'}</strong>
+          <strong>$100 → {localPerUsd ? `약 ${formatCurrency(100 * localPerUsd, currency)}` : '불러오는 중'}</strong>
+        </div>
         <span>{updatedAt ? `${new Date(updatedAt).toLocaleString('ko-KR')} 업데이트` : '환율 불러오는 중'}</span>
       </article>
       <article className="live-tool-card calculator-tool">
-        <small>환전 계산기 · VND → KRW</small>
-        <div><input type="text" inputMode="numeric" value={amount.toLocaleString('ko-KR')} onChange={(event) => setAmount(Number(event.target.value.replace(/[^0-9]/g, '')) || 0)} aria-label="베트남 동 금액" /><b>→</b><output>{Math.round(amount * vndToKrw).toLocaleString('ko-KR')}원</output></div>
+        <small>환전 계산기 · {currency} → KRW</small>
+        <div>
+          <input type="text" inputMode="numeric" value={amount.toLocaleString('ko-KR')} onChange={(event) => setAmount(Number(event.target.value.replace(/[^0-9]/g, '')) || 0)} aria-label={`${meta.name} 금액`} />
+          <b>→</b>
+          <output>{krwPerLocal ? formatCurrency(amount * krwPerLocal, 'KRW') : '불러오는 중'}</output>
+        </div>
       </article>
       {notice && <p className="live-tool-notice" role="status">{notice}</p>}
     </section>
