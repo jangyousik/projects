@@ -172,6 +172,7 @@ function App() {
   const [places, setPlaces] = useState([])
   const [schedules, setSchedules] = useState([])
   const [expenses, setExpenses] = useState([])
+  const [tripPhotos, setTripPhotos] = useState([])
   const [tripBudgetItems, setTripBudgetItems] = useState({ schedules: {}, expenses: {} })
   const [members, setMembers] = useState([])
   const [session, setSession] = useState(null)
@@ -179,6 +180,8 @@ function App() {
   const [setupTripId, setSetupTripId] = useState(null)
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(null)
   const [screen, setScreen] = useState('home')
+  const [tripSearch, setTripSearch] = useState('')
+  const [tripFilter, setTripFilter] = useState('all')
   const [tripsLoading, setTripsLoading] = useState(false)
   const [tripMessage, setTripMessage] = useState('')
   const [itemLoading, setItemLoading] = useState(false)
@@ -196,6 +199,8 @@ function App() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [receiptPreview, setReceiptPreview] = useState('')
   const [receiptStatus, setReceiptStatus] = useState('')
+  const [tripPhotoFile, setTripPhotoFile] = useState(null)
+  const [tripPhotoPreview, setTripPhotoPreview] = useState('')
   const [tripCountry, setTripCountry] = useState('VN')
   const [tripCurrency, setTripCurrency] = useState('VND')
   const [tripStartDate, setTripStartDate] = useState('')
@@ -243,6 +248,7 @@ function App() {
       setPlaces([])
       setSchedules([])
       setExpenses([])
+      setTripPhotos([])
       setMembers([])
       return
     }
@@ -291,6 +297,7 @@ function App() {
       setPlaces([])
       setSchedules([])
       setExpenses([])
+      setTripPhotos([])
       setMembers([])
       return
     }
@@ -299,7 +306,7 @@ function App() {
     const loadTripItems = async () => {
       setItemLoading(true)
       setItemMessage('')
-      const [placesResult, schedulesResult, expensesResult, membersResult] = await Promise.all([
+      const [placesResult, schedulesResult, expensesResult, membersResult, photosResult] = await Promise.all([
         supabase
           .from('places')
           .select('id,name,address,memo,latitude,longitude,google_place_id,google_maps_url')
@@ -321,11 +328,17 @@ function App() {
           .select('user_id,role,joined_at,profiles!trip_members_user_id_fkey(display_name,avatar_url)')
           .eq('trip_id', selectedTripId)
           .order('joined_at', { ascending: true }),
+        supabase
+          .from('attachments')
+          .select('id,storage_path,uploaded_by,created_at')
+          .eq('trip_id', selectedTripId)
+          .eq('kind', 'photo')
+          .order('created_at', { ascending: false }),
       ])
 
       if (!active) return
-      if (placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error) {
-        setItemMessage(`여행 정보를 불러오지 못했습니다: ${(placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error).message}`)
+      if (placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error || photosResult.error) {
+        setItemMessage(`여행 정보를 불러오지 못했습니다: ${(placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error || photosResult.error).message}`)
       } else {
         setPlaces(placesResult.data || [])
         setSchedules((schedulesResult.data || []).map((item) => ({
@@ -364,6 +377,15 @@ function App() {
           displayName: member.profiles?.display_name || '여행 멤버',
           avatarUrl: member.profiles?.avatar_url || null,
         })))
+        const photoRows = photosResult.data || []
+        if (photoRows.length) {
+          const { data: signedPhotos, error: signedError } = await supabase.storage
+            .from('trip-files')
+            .createSignedUrls(photoRows.map((photo) => photo.storage_path), 60 * 60)
+          setTripPhotos(signedError ? [] : photoRows.map((photo, index) => ({ ...photo, url: signedPhotos[index]?.signedUrl || '' })))
+        } else {
+          setTripPhotos([])
+        }
       }
       setItemLoading(false)
     }
@@ -374,6 +396,20 @@ function App() {
 
   const selectedTrip = trips.find((trip) => trip.id === selectedTripId) || null
   const isTripDetail = Boolean(session) && screen === 'trip' && Boolean(selectedTrip)
+  const todayText = getLocalDateText()
+  const sortedTrips = [...trips].sort((a, b) => {
+    const phase = (trip) => todayText < trip.startDate ? 1 : todayText <= trip.endDate ? 0 : 2
+    const phaseDifference = phase(a) - phase(b)
+    if (phaseDifference) return phaseDifference
+    if (phase(a) === 2) return b.endDate.localeCompare(a.endDate)
+    return a.startDate.localeCompare(b.startDate)
+  })
+  const filteredTrips = sortedTrips.filter((trip) => {
+    const searchText = tripSearch.trim().toLocaleLowerCase('ko-KR')
+    const matchesSearch = !searchText || `${trip.title} ${trip.destination} ${trip.startDate} ${trip.endDate} ${trip.people}`.toLocaleLowerCase('ko-KR').includes(searchText)
+    const phase = todayText < trip.startDate ? 'upcoming' : todayText <= trip.endDate ? 'active' : 'past'
+    return matchesSearch && (tripFilter === 'all' || tripFilter === phase)
+  })
   const scheduleDates = [...new Set(schedules.map((schedule) => schedule.date))].sort()
   const activeScheduleDate = scheduleDates.includes(selectedScheduleDate) ? selectedScheduleDate : scheduleDates[0]
   const visibleSchedules = schedules.filter((schedule) => schedule.date === activeScheduleDate)
@@ -796,6 +832,83 @@ function App() {
     setReceiptStatus('')
     setItemMessage('')
     setDialog('schedule-complete')
+  }
+
+  const openTripPhotoDialog = () => {
+    setTripPhotoFile(null)
+    setTripPhotoPreview('')
+    setItemMessage('')
+    setDialog('trip-photo')
+  }
+
+  const selectTripPhoto = (file) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setItemMessage('JPG, PNG 또는 WebP 사진을 선택해 주세요.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setItemMessage('사진은 한 장당 10MB 이하만 저장할 수 있습니다.')
+      return
+    }
+    setTripPhotoFile(file)
+    setTripPhotoPreview(URL.createObjectURL(file))
+    setItemMessage('')
+  }
+
+  const saveTripPhoto = async (event) => {
+    event.preventDefault()
+    if (!tripPhotoFile || !selectedTripId || !session || itemLoading) return
+    setItemLoading(true)
+    setItemMessage('')
+    const extension = tripPhotoFile.type === 'image/png' ? 'png' : tripPhotoFile.type === 'image/webp' ? 'webp' : 'jpg'
+    const storagePath = `${selectedTripId}/photos/${session.user.id}-${Date.now()}.${extension}`
+    const { error: uploadError } = await supabase.storage.from('trip-files').upload(storagePath, tripPhotoFile, {
+      contentType: tripPhotoFile.type,
+      upsert: false,
+    })
+    if (uploadError) {
+      setItemLoading(false)
+      setItemMessage(`사진을 저장하지 못했습니다: ${uploadError.message}`)
+      return
+    }
+    const { data: attachment, error: attachmentError } = await supabase.from('attachments').insert({
+      trip_id: selectedTripId,
+      uploaded_by: session.user.id,
+      storage_path: storagePath,
+      kind: 'photo',
+    }).select('id,storage_path,uploaded_by,created_at').single()
+    if (attachmentError) {
+      await supabase.storage.from('trip-files').remove([storagePath])
+      setItemLoading(false)
+      setItemMessage(`사진 정보를 저장하지 못했습니다: ${attachmentError.message}`)
+      return
+    }
+    const { data: signed } = await supabase.storage.from('trip-files').createSignedUrl(storagePath, 60 * 60)
+    setTripPhotos((current) => [{ ...attachment, url: signed?.signedUrl || tripPhotoPreview }, ...current])
+    setItemLoading(false)
+    setDialog(null)
+    setTripPhotoFile(null)
+    setTripPhotoPreview('')
+    setItemMessage('여행 사진을 안전하게 저장했습니다.')
+  }
+
+  const deleteTripPhoto = async (photo) => {
+    if (!canEditTrip || itemLoading || !window.confirm('이 여행 사진을 삭제할까요?')) return
+    setItemLoading(true)
+    const { error: storageError } = await supabase.storage.from('trip-files').remove([photo.storage_path])
+    let rowError = null
+    if (!storageError) {
+      const result = await supabase.from('attachments').delete().eq('id', photo.id).eq('trip_id', selectedTripId)
+      rowError = result.error
+    }
+    setItemLoading(false)
+    if (storageError || rowError) {
+      setItemMessage(`사진을 삭제하지 못했습니다: ${(storageError || rowError).message}`)
+      return
+    }
+    setTripPhotos((current) => current.filter((item) => item.id !== photo.id))
+    setItemMessage('여행 사진을 삭제했습니다.')
   }
 
   const readReceipt = async (file) => {
@@ -1463,6 +1576,21 @@ function App() {
         )}
 
         {isTripDetail && (
+          <section className="saved-section trip-gallery-section">
+            <div className="section-heading">
+              <div><p className="section-label">{selectedTrip.title} · 사진</p><h2>여행 사진</h2></div>
+              {canEditTrip && <button className="mini-add" type="button" onClick={openTripPhotoDialog}>📷 사진 추가</button>}
+            </div>
+            {tripPhotos.length ? <div className="trip-photo-grid">{tripPhotos.map((photo) => (
+              <figure key={photo.id}>
+                <a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={`${selectedTrip.title} 여행 사진`} loading="lazy" /></a>
+                <figcaption><time>{new Date(photo.created_at).toLocaleDateString('ko-KR')}</time>{canEditTrip && <button type="button" onClick={() => deleteTripPhoto(photo)}>삭제</button>}</figcaption>
+              </figure>
+            ))}</div> : <div className="trip-photo-empty"><span>📷</span><strong>아직 저장한 여행 사진이 없어요</strong><p>음식, 풍경, 가족과의 순간을 여행별로 보관하세요.</p></div>}
+          </section>
+        )}
+
+        {isTripDetail && (
           <section className="saved-section member-section">
             <div className="section-heading">
               <div><p className="section-label">{selectedTrip.title} · 공유</p><h2>함께하는 사람</h2></div>
@@ -1484,13 +1612,21 @@ function App() {
           </section>
         )}
 
+        {screen === 'home' && session && trips.length > 0 && <button className="new-trip-button is-list-first" type="button" onClick={openTripDialog}><span aria-hidden="true">＋</span> 새 여행 만들기</button>}
+
         {screen === 'home' && session && trips.length > 0 && (
           <section className="saved-section">
             <p className="section-label">내가 만든 여행</p>
-            <div className="saved-list">{trips.map((trip) => (
-              <div className={`saved-trip trip-entry ${selectedTripId === trip.id ? 'is-selected' : ''}`} key={trip.id}>
+            <div className="trip-search-panel">
+              <label><span aria-hidden="true">⌕</span><input type="search" value={tripSearch} onChange={(event) => setTripSearch(event.target.value)} placeholder="여행 이름이나 도시 검색" aria-label="여행 검색" />{tripSearch && <button type="button" onClick={() => setTripSearch('')} aria-label="검색어 지우기">×</button>}</label>
+              <div role="group" aria-label="여행 상태 필터">{[['all', '전체'], ['upcoming', '다가오는 여행'], ['active', '여행 중'], ['past', '지난 여행']].map(([value, label]) => <button className={tripFilter === value ? 'is-active' : ''} type="button" onClick={() => setTripFilter(value)} key={value}>{label}</button>)}</div>
+            </div>
+            {filteredTrips.length ? <div className="saved-list">{filteredTrips.map((trip) => {
+              const isPastTrip = trip.endDate < todayText
+              return (
+              <div className={`saved-trip trip-entry ${selectedTripId === trip.id ? 'is-selected' : ''}${isPastTrip ? ' is-past' : ''}`} key={trip.id}>
                 <button className="trip-select" type="button" onClick={() => openTripDetail(trip.id)}>
-                  <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><span className="trip-card-status"><em>{getTripCountdown(trip)}</em><b>{selectedTripId === trip.id ? '선택됨' : '선택'}</b></span>
+                  <span>✈️</span><span><strong>{trip.title}</strong><small>{trip.destination} · {trip.startDate} ~ {trip.endDate} · {trip.people}명</small></span><span className="trip-card-status"><em>{getTripCountdown(trip)}</em><b>{isPastTrip ? '지난 여행' : selectedTripId === trip.id ? '선택됨' : '선택'}</b></span>
                 </button>
                 <div className="trip-budget-summary" aria-label={`${trip.title} 예산 요약`}>
                   {buildTripBudgetSummary(
@@ -1505,7 +1641,7 @@ function App() {
                   <button className="danger" type="button" onClick={() => deleteTrip(trip)}>삭제</button>
                 </div>}
               </div>
-            ))}</div>
+            )})}</div> : <div className="trip-search-empty"><span>🔎</span><strong>조건에 맞는 여행이 없어요</strong><button type="button" onClick={() => { setTripSearch(''); setTripFilter('all') }}>검색 초기화</button></div>}
           </section>
         )}
 
@@ -1514,7 +1650,6 @@ function App() {
         {tripMessage && !dialog && <p className="data-status is-error" role="alert">{tripMessage}</p>}
         {itemMessage && !dialog && <p className="data-status is-error" role="alert">{itemMessage}</p>}
 
-        {screen === 'home' && session && trips.length > 0 && <button className="new-trip-button" type="button" onClick={openTripDialog}><span aria-hidden="true">＋</span> 새 여행 만들기</button>}
         {isTripDetail && canEditTrip && <button className="schedule-fab" type="button" onClick={() => openItemDialog('schedule')} aria-label="새 일정 추가"><span aria-hidden="true">＋</span><b>일정</b></button>}
       </main>
 
@@ -1524,7 +1659,7 @@ function App() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
           <section className={`app-dialog${dialog === 'excel-preview' ? ' excel-preview-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="dialog-handle" />
-            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : dialog === 'schedule-complete' ? '일정 마무리' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'schedule-complete' ? '완료 및 영수증 저장' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null); setCompletionSchedule(null) }} aria-label="닫기">×</button></div>
+            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : dialog === 'schedule-complete' ? '일정 마무리' : dialog === 'trip-photo' ? '여행의 순간' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'schedule-complete' ? '완료 및 영수증 저장' : dialog === 'trip-photo' ? '여행 사진 저장' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null); setCompletionSchedule(null) }} aria-label="닫기">×</button></div>
             {dialog === 'excel-preview' ? (
               <div className="excel-preview-panel">
                 <p><strong>{excelFileName}</strong>에서 {excelPreview.length}개 일정을 찾았습니다. 잘못 분류된 내용은 여기서 고친 뒤 저장하세요.</p>
@@ -1538,6 +1673,17 @@ function App() {
                 {itemMessage && <p className="auth-message" role="alert">{itemMessage}</p>}
                 <button className="dialog-submit" type="button" onClick={confirmExcelImport} disabled={itemLoading || !excelPreview.length}>{itemLoading ? '저장 중…' : `${excelPreview.length}개 일정 저장`}</button>
               </div>
+            ) : dialog === 'trip-photo' ? (
+              <form onSubmit={saveTripPhoto}>
+                <label className="trip-photo-picker">
+                  <span>📷 카메라로 촬영하거나 사진 선택</span>
+                  <small>JPG, PNG, WebP · 최대 10MB</small>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => selectTripPhoto(event.target.files?.[0])} />
+                </label>
+                {tripPhotoPreview && <img className="trip-photo-preview" src={tripPhotoPreview} alt="저장할 여행 사진 미리보기" />}
+                {itemMessage && <p className="auth-message" role="status">{itemMessage}</p>}
+                <div className="dialog-actions"><button className="dialog-cancel" type="button" onClick={() => setDialog(null)}>취소</button><button className="dialog-submit" type="submit" disabled={!tripPhotoFile || itemLoading}>{itemLoading ? '저장 중…' : '사진 저장'}</button></div>
+              </form>
             ) : dialog === 'schedule-complete' ? (
               <form onSubmit={saveScheduleCompletion}>
                 <div className="completion-summary">
