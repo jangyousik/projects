@@ -882,13 +882,13 @@ function App() {
     setDialog('schedule-complete')
   }
 
-  const openTripPhotoDialog = () => {
+  const openTripPhotoDialog = (schedule = null) => {
     setTripPhotoFile(null)
     setTripPhotoPreview('')
-    setTripPhotoDate(selectedScheduleDate || selectedTrip?.startDate || getLocalDateText())
+    setTripPhotoDate(schedule?.date || selectedScheduleDate || selectedTrip?.startDate || getLocalDateText())
     setTripPhotoCaption('')
-    setTripPhotoPlace('')
-    setTripPhotoScheduleId('')
+    setTripPhotoPlace(schedule?.place || '')
+    setTripPhotoScheduleId(schedule?.id || '')
     setItemMessage('')
     setDialog('trip-photo')
   }
@@ -1600,6 +1600,7 @@ function App() {
                   <button type="button" onClick={() => openGrabForSchedule(schedule, selectedTrip)}>🚕 Grab</button>
                   <button type="button" onClick={() => downloadScheduleCalendar(schedule, selectedTrip)}>🔔 알림</button>
                   {canEditTrip && <>
+                  <button type="button" onClick={() => openTripPhotoDialog(schedule)}>📷 사진</button>
                   <button type="button" onClick={() => toggleSchedule(schedule)} disabled={itemLoading}>{schedule.completed ? '완료 취소' : '완료'}</button>
                   <button type="button" onClick={() => openEditDialog('schedule', schedule)}>수정</button>
                   <button className="danger" type="button" onClick={() => deleteItem('schedule', schedule)}>삭제</button>
@@ -1647,12 +1648,12 @@ function App() {
           <section className="saved-section trip-gallery-section">
             <div className="section-heading">
               <div><p className="section-label">{selectedTrip.title} · 사진</p><h2>여행 사진</h2></div>
-              {canEditTrip && <button className="mini-add" type="button" onClick={openTripPhotoDialog}>📷 사진 추가</button>}
+              {canEditTrip && <button className="mini-add" type="button" onClick={() => openTripPhotoDialog()}>📷 사진 추가</button>}
             </div>
             {tripPhotos.length ? <div className="trip-photo-grid">{tripPhotos.map((photo) => (
               <figure key={photo.id}>
                 <a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={`${selectedTrip.title} 여행 사진`} loading="lazy" /></a>
-                <figcaption><span><time>{new Date(photo.captured_at || photo.created_at).toLocaleDateString('ko-KR')}</time>{photo.place_name && <small>{photo.place_name}</small>}{photo.caption && <small>{photo.caption}</small>}</span>{canEditTrip && <button type="button" onClick={() => deleteTripPhoto(photo)}>삭제</button>}</figcaption>
+                <figcaption><span><time>{new Date(photo.captured_at || photo.created_at).toLocaleDateString('ko-KR')}</time>{photo.schedule_item_id && <small>🗓️ {schedules.find((schedule) => schedule.id === photo.schedule_item_id)?.title || '연결 일정'}</small>}{photo.place_name && <small>📍 {photo.place_name}</small>}{photo.caption && <small>{photo.caption}</small>}</span>{canEditTrip && <button type="button" onClick={() => deleteTripPhoto(photo)}>삭제</button>}</figcaption>
               </figure>
             ))}</div> : <div className="trip-photo-empty"><span>📷</span><strong>아직 저장한 여행 사진이 없어요</strong><p>음식, 풍경, 가족과의 순간을 여행별로 보관하세요.</p></div>}
           </section>
