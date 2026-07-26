@@ -88,6 +88,12 @@ button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
 .google-place-search gmp-place-autocomplete { width: 100%; }
 .google-place-search p { margin: 0; color: #777d8b; font-size: .7rem; line-height: 1.45; }
 .google-place-search a { color: #5846c9; font-size: .75rem; font-weight: 800; text-decoration: none; }
+.google-map-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.google-map-actions button { padding: 9px 10px; border: 1px solid #d9d5f5; border-radius: 10px; background: white; color: #5846c9; font-size: .72rem; font-weight: 800; }
+.google-map-picker { position: relative; display: grid; gap: 7px; }
+.google-map-picker > div { width: 100%; height: 260px; overflow: hidden; border: 1px solid #d9dce7; border-radius: 13px; background: #e9edf3; }
+.google-map-picker > span { position: absolute; z-index: 2; top: 12px; left: 50%; translate: -50% 0; padding: 7px 10px; border-radius: 999px; background: rgba(255,255,255,.94); color: #596173; font-size: .68rem; box-shadow: 0 4px 14px rgba(26,36,58,.12); }
+.google-map-picker small { color: #777d8b; font-size: .67rem; line-height: 1.45; }
 .schedule-map-search { display: grid; gap: 8px; }
 .schedule-map-search > strong { display: flex; align-items: center; gap: 6px; color: #303544; font-size: .78rem; }
 .schedule-map-search .google-place-search { background: linear-gradient(145deg, #f3f1ff, #fafbff); border-color: #dcd7fa; }
