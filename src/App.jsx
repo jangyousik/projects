@@ -5,11 +5,13 @@ import { BottomNav } from './components/BottomNav'
 import { AuthPanel } from './components/AuthPanel'
 import { GooglePlaceSearch } from './components/GooglePlaceSearch'
 import { TripLiveTools } from './components/TripLiveTools'
+import { PersonalAiSettings } from './components/PersonalAiSettings'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook, readWorkbookForAi } from './lib/tripExcel'
 
 const ExternalApps = registerPlugin('ExternalApps')
+const ReceiptOcr = registerPlugin('ReceiptOcr')
 
 const CURRENCY_OPTIONS = [
   ['VND', '베트남 동'], ['KRW', '한국 원'], ['USD', '미국 달러'], ['JPY', '일본 엔'],
@@ -78,6 +80,27 @@ function parseLegacyPrice(priceText) {
     amount: Number(priceText.replace(/[^0-9]/g, '')) || 0,
     currency: priceText.includes('₩') ? 'KRW' : priceText.includes('$') ? 'USD' : 'VND',
   }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('사진을 읽지 못했습니다.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function findReceiptAmount(text) {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const amountFrom = (line) => [...line.matchAll(/\d[\d.,\s]*/g)]
+    .map((match) => Number(match[0].replace(/[^0-9]/g, '')))
+    .filter((amount) => Number.isFinite(amount) && amount > 0)
+  const totalLines = lines.filter((line) => /총액|합계|결제금액|받을금액|total|amount|grand total|tổng|thanh toán|合計|お会計/i.test(line))
+  const preferred = totalLines.flatMap(amountFrom)
+  if (preferred.length) return Math.max(...preferred)
+  const candidates = lines.flatMap(amountFrom).filter((amount) => amount >= 100)
+  return candidates.length ? Math.max(...candidates) : 0
 }
 
 function buildTripBudgetSummary(trip, schedules = [], expenses = [], exchangeRates = null) {
@@ -168,6 +191,11 @@ function App() {
   const [scheduleAgentNote, setScheduleAgentNote] = useState('')
   const [scheduleAgentLoading, setScheduleAgentLoading] = useState(false)
   const [scheduleVoiceListening, setScheduleVoiceListening] = useState(false)
+  const [completionSchedule, setCompletionSchedule] = useState(null)
+  const [completionAmount, setCompletionAmount] = useState('0')
+  const [receiptFile, setReceiptFile] = useState(null)
+  const [receiptPreview, setReceiptPreview] = useState('')
+  const [receiptStatus, setReceiptStatus] = useState('')
   const [tripCountry, setTripCountry] = useState('VN')
   const [tripCurrency, setTripCurrency] = useState('VND')
   const [tripStartDate, setTripStartDate] = useState('')
@@ -760,44 +788,119 @@ function App() {
     setDialog(null)
   }
 
-  const toggleSchedule = async (schedule) => {
-    if (!session || !selectedTripId || !supabase || itemLoading) return
+  const openScheduleCompletion = (schedule) => {
+    setCompletionSchedule(schedule)
+    setCompletionAmount(String(schedule.actualCost || schedule.estimatedCost || 0))
+    setReceiptFile(null)
+    setReceiptPreview('')
+    setReceiptStatus('')
+    setItemMessage('')
+    setDialog('schedule-complete')
+  }
 
-    const completed = !schedule.completed
-    let actualCost = schedule.actualCost || 0
-    if (completed) {
-      const enteredCost = window.prompt(
-        `완료 금액을 입력하세요. (${schedule.costCurrency || selectedTrip?.currency || 'VND'})`,
-        String(schedule.actualCost || schedule.estimatedCost || 0),
-      )
-      if (enteredCost === null) return
-      actualCost = Number(enteredCost.replace(/[^0-9.]/g, ''))
-      if (!Number.isFinite(actualCost) || actualCost < 0) {
-        setItemMessage('완료 금액을 올바르게 입력해 주세요.')
-        return
-      }
+  const readReceipt = async (file) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setReceiptStatus('JPG, PNG 또는 WebP 영수증 사진을 선택해 주세요.')
+      return
     }
+    if (file.size > 10 * 1024 * 1024) {
+      setReceiptStatus('영수증 사진은 10MB 이하만 저장할 수 있습니다.')
+      return
+    }
+    setReceiptFile(file)
+    setReceiptPreview(URL.createObjectURL(file))
+    setReceiptStatus('영수증을 읽고 있습니다…')
+    if (!Capacitor.isNativePlatform()) {
+      setReceiptStatus('웹에서는 사진을 저장할 수 있습니다. 자동 금액 인식은 최신 Android 앱에서 지원합니다.')
+      return
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      const result = await ReceiptOcr.recognize({ dataUrl })
+      const detectedAmount = findReceiptAmount(result.text)
+      if (detectedAmount > 0) {
+        setCompletionAmount(String(detectedAmount))
+        setReceiptStatus(`영수증에서 ${detectedAmount.toLocaleString('ko-KR')}을 찾았습니다. 금액을 확인해 주세요.`)
+      } else {
+        setReceiptStatus('글자는 읽었지만 총액을 확정하지 못했습니다. 실제 금액을 직접 확인해 주세요.')
+      }
+    } catch (error) {
+      setReceiptStatus(error?.message || '영수증을 자동으로 읽지 못했습니다. 금액을 직접 입력해 주세요.')
+    }
+  }
 
+  const saveScheduleCompletion = async (event) => {
+    event.preventDefault()
+    const schedule = completionSchedule
+    if (!session || !selectedTripId || !supabase || itemLoading) return
+    const actualCost = Number(String(completionAmount).replace(/[^0-9.]/g, ''))
+    if (!Number.isFinite(actualCost) || actualCost < 0) {
+      setReceiptStatus('완료 금액을 올바르게 입력해 주세요.')
+      return
+    }
     setItemLoading(true)
     setItemMessage('')
     const { data, error } = await supabase
       .from('schedule_items')
-      .update({ completed, actual_cost: actualCost, updated_at: new Date().toISOString() })
+      .update({ completed: true, actual_cost: actualCost, updated_at: new Date().toISOString() })
       .eq('id', schedule.id)
       .eq('trip_id', selectedTripId)
       .select('completed,actual_cost')
       .single()
-    setItemLoading(false)
     if (error) {
-      setItemMessage(`완료 상태를 변경하지 못했습니다: ${error.message}`)
+      setItemLoading(false)
+      setReceiptStatus(`완료 상태를 변경하지 못했습니다: ${error.message}`)
       return
+    }
+
+    let receiptWarning = ''
+    if (receiptFile) {
+      const extension = receiptFile.type === 'image/png' ? 'png' : receiptFile.type === 'image/webp' ? 'webp' : 'jpg'
+      const storagePath = `${selectedTripId}/receipts/${schedule.id}-${Date.now()}.${extension}`
+      const { error: uploadError } = await supabase.storage.from('trip-files').upload(storagePath, receiptFile, { contentType: receiptFile.type, upsert: false })
+      if (uploadError) {
+        receiptWarning = ` 영수증 사진 저장 실패: ${uploadError.message}`
+      } else {
+        const { error: attachmentError } = await supabase.from('attachments').insert({
+          trip_id: selectedTripId,
+          schedule_item_id: schedule.id,
+          uploaded_by: session.user.id,
+          storage_path: storagePath,
+          kind: 'receipt',
+        })
+        if (attachmentError) receiptWarning = ` 영수증 정보 저장 실패: ${attachmentError.message}`
+      }
     }
     setSchedules((current) => current.map((item) => item.id === schedule.id ? {
       ...item,
       completed: data.completed,
       actualCost: Number(data.actual_cost),
     } : item))
-    setItemMessage(data.completed ? `완료 처리했습니다. 실제 금액 ${formatMoney(Number(data.actual_cost), schedule.costCurrency || selectedTrip?.currency || 'VND')}` : '완료를 취소했습니다.')
+    setItemLoading(false)
+    setDialog(null)
+    setCompletionSchedule(null)
+    setItemMessage(`완료 처리했습니다. 실제 금액 ${formatMoney(Number(data.actual_cost), schedule.costCurrency || selectedTrip?.currency || 'VND')}.${receiptFile && !receiptWarning ? ' 영수증 사진도 저장했습니다.' : ''}${receiptWarning}`)
+  }
+
+  const toggleSchedule = async (schedule) => {
+    if (!schedule.completed) {
+      openScheduleCompletion(schedule)
+      return
+    }
+    if (!session || !selectedTripId || !supabase || itemLoading) return
+    setItemLoading(true)
+    setItemMessage('')
+    const { data, error } = await supabase.from('schedule_items')
+      .update({ completed: false, updated_at: new Date().toISOString() })
+      .eq('id', schedule.id).eq('trip_id', selectedTripId).select('completed,actual_cost').single()
+    setItemLoading(false)
+    if (error) {
+      setItemMessage(`완료 상태를 변경하지 못했습니다: ${error.message}`)
+      return
+    }
+    setSchedules((current) => current.map((item) => item.id === schedule.id ? { ...item, completed: data.completed, actualCost: Number(data.actual_cost) } : item))
+    setItemMessage('완료를 취소했습니다.')
   }
 
   const deleteItem = async (type, item) => {
@@ -1209,8 +1312,8 @@ function App() {
       <main>
         <header className="topbar">
           <div>
-            <p className="eyebrow">{isTripDetail ? getTripPhaseLabel(selectedTrip) : '안녕하세요 👋'}</p>
-            {!isTripDetail && <h1>어디로 떠나볼까요?</h1>}
+            <p className="eyebrow">{isTripDetail ? getTripPhaseLabel(selectedTrip) : screen === 'settings' ? '개인정보와 비용을 지켜요' : screen === 'community' ? '여행자가 여행자를 도와요' : '안녕하세요 👋'}</p>
+            {!isTripDetail && <h1>{screen === 'settings' ? '설정' : screen === 'community' ? '여행온 이야기' : '어디로 떠나볼까요?'}</h1>}
           </div>
           <button className="profile-button" type="button" aria-label="로그인과 내 프로필" onClick={() => setDialog('auth')}>{session ? (session.user.user_metadata?.name?.slice(0, 2) || 'MY') : '로그인'}</button>
         </header>
@@ -1241,6 +1344,17 @@ function App() {
             {session.user.email?.toLowerCase() === 'jys7867@gmail.com'
               ? <button type="button" onClick={restoreHanoiFamilyTrip}>하노이 4일 일정 복원</button>
               : <button type="button" onClick={openTripDialog}>새 여행 만들기</button>}
+          </section>
+        )}
+
+        {screen === 'settings' && session && <PersonalAiSettings />}
+
+        {screen === 'community' && session && (
+          <section className="community-coming-soon">
+            <span aria-hidden="true">🌏</span>
+            <h2>여행온 게시판</h2>
+            <p>한국인 여행자들이 직접 확인한 장소, 비용, 이동 팁을 안전하게 나누는 공간을 준비하고 있습니다.</p>
+            <div><strong>운영 원칙</strong><ul><li>광고성·허위 정보보다 실제 여행 경험을 우선합니다.</li><li>개인정보와 예약번호는 자동으로 숨길 수 있게 만듭니다.</li><li>신고·차단·관리 기능을 갖춘 뒤 글쓰기를 엽니다.</li></ul></div>
           </section>
         )}
 
@@ -1404,13 +1518,13 @@ function App() {
         {isTripDetail && canEditTrip && <button className="schedule-fab" type="button" onClick={() => openItemDialog('schedule')} aria-label="새 일정 추가"><span aria-hidden="true">＋</span><b>일정</b></button>}
       </main>
 
-      {session && <BottomNav />}
+      {session && <BottomNav activeScreen={screen === 'trip' ? 'home' : screen} onNavigate={(nextScreen) => { setSetupTripId(null); setScreen(nextScreen) }} />}
 
       {dialog && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
           <section className={`app-dialog${dialog === 'excel-preview' ? ' excel-preview-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="dialog-handle" />
-            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null) }} aria-label="닫기">×</button></div>
+            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : dialog === 'schedule-complete' ? '일정 마무리' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'schedule-complete' ? '완료 및 영수증 저장' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null); setCompletionSchedule(null) }} aria-label="닫기">×</button></div>
             {dialog === 'excel-preview' ? (
               <div className="excel-preview-panel">
                 <p><strong>{excelFileName}</strong>에서 {excelPreview.length}개 일정을 찾았습니다. 잘못 분류된 내용은 여기서 고친 뒤 저장하세요.</p>
@@ -1424,6 +1538,27 @@ function App() {
                 {itemMessage && <p className="auth-message" role="alert">{itemMessage}</p>}
                 <button className="dialog-submit" type="button" onClick={confirmExcelImport} disabled={itemLoading || !excelPreview.length}>{itemLoading ? '저장 중…' : `${excelPreview.length}개 일정 저장`}</button>
               </div>
+            ) : dialog === 'schedule-complete' ? (
+              <form onSubmit={saveScheduleCompletion}>
+                <div className="completion-summary">
+                  <span aria-hidden="true">✅</span>
+                  <div><strong>{completionSchedule?.title}</strong><small>{completionSchedule?.date} {completionSchedule?.time || ''}</small></div>
+                </div>
+                <label>실제 사용금액
+                  <input type="text" inputMode="decimal" value={Number(completionAmount || 0).toLocaleString('ko-KR')} onChange={(event) => setCompletionAmount(event.target.value.replace(/[^0-9.]/g, ''))} />
+                  <small>{completionSchedule?.costCurrency || selectedTrip?.currency || 'VND'} 기준 · 영수증 인식 후에도 꼭 확인해 주세요.</small>
+                </label>
+                <label className="receipt-capture">
+                  <span>📷 영수증 촬영 또는 사진 선택</span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => readReceipt(event.target.files?.[0])} />
+                </label>
+                {receiptPreview && <img className="receipt-preview" src={receiptPreview} alt="선택한 영수증 미리보기" />}
+                {receiptStatus && <p className="auth-message" role="status">{receiptStatus}</p>}
+                <div className="dialog-actions">
+                  <button type="button" onClick={() => { setDialog(null); setCompletionSchedule(null) }}>취소</button>
+                  <button className="dialog-submit" type="submit" disabled={itemLoading}>{itemLoading ? '저장 중…' : '금액 확인 및 완료'}</button>
+                </div>
+              </form>
             ) : dialog === 'auth' ? (
               <AuthPanel session={session} onClose={() => setDialog(null)} />
             ) : dialog === 'trip' || dialog === 'trip-edit' ? (

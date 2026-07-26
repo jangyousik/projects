@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ReceiptOcrPlugin.class);
         registerPlugin(ExternalAppsPlugin.class);
+        registerPlugin(SecureAiPlugin.class);
         super.onCreate(savedInstanceState);
         getBridge().getWebView().addJavascriptInterface(new HanoiNativeInterface(), "HanoiNative");
     }

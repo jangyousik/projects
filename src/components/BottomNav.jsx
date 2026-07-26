@@ -1,23 +1,24 @@
 const navItems = [
-  { icon: '⌂', label: '홈', active: true, href: '/' },
-  { icon: '▣', label: '여행', href: '/' },
-  { icon: '♡', label: '저장', href: '#saved' },
-  { icon: '⚙', label: '설정', href: '#settings' },
+  { icon: '⌂', label: '홈', screen: 'home' },
+  { icon: '▣', label: '여행', screen: 'home' },
+  { icon: '☁', label: '게시판', screen: 'community' },
+  { icon: '⚙', label: '설정', screen: 'settings' },
 ]
 
-export function BottomNav() {
+export function BottomNav({ activeScreen = 'home', onNavigate }) {
   return (
     <nav className="bottom-nav" aria-label="주요 메뉴">
       {navItems.map((item) => (
-        <a
-          className={item.active ? 'nav-item is-active' : 'nav-item'}
-          href={item.href}
+        <button
+          type="button"
+          className={activeScreen === item.screen ? 'nav-item is-active' : 'nav-item'}
+          onClick={() => onNavigate(item.screen)}
           key={item.label}
-          aria-current={item.active ? 'page' : undefined}
+          aria-current={activeScreen === item.screen ? 'page' : undefined}
         >
           <span aria-hidden="true">{item.icon}</span>
           {item.label}
-        </a>
+        </button>
       ))}
     </nav>
   )
