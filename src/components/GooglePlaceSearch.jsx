@@ -4,7 +4,7 @@ const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 let googleMapsPromise
 
 const loadGoogleMaps = () => {
-  if (window.google?.maps?.places) return Promise.resolve(window.google)
+  if (window.google?.maps?.places || window.google?.maps?.importLibrary) return Promise.resolve(window.google)
   if (!apiKey) return Promise.reject(new Error('Google Maps API 키가 설정되지 않았습니다.'))
   if (!googleMapsPromise) {
     googleMapsPromise = new Promise((resolve, reject) => {
@@ -67,25 +67,27 @@ export function GooglePlaceSearch({ onSelect }) {
     if (!apiKey || !containerRef.current) return undefined
     let active = true
     let autocomplete
+    let autocompleteListener
 
     loadGoogleMaps()
       .then(async (google) => {
-        await google.maps.importLibrary('places')
+        if (google.maps.importLibrary) await google.maps.importLibrary('places')
         if (!active || !containerRef.current) return
         googleRef.current = google
-        autocomplete = new google.maps.places.PlaceAutocompleteElement()
-        autocomplete.setAttribute('aria-label', 'Google 장소 검색')
-        autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
-          const place = placePrediction.toPlace()
-          await place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI'] })
-          const location = place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null
+
+        const applySelectedPlace = (place, fallbackName = '') => {
+          const location = place.location
+            ? { lat: place.location.lat(), lng: place.location.lng() }
+            : place.geometry?.location
+              ? { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() }
+              : null
           onSelect({
-            googlePlaceId: place.id || '',
-            name: place.displayName || placePrediction.text?.toString() || '',
-            address: place.formattedAddress || '',
+            googlePlaceId: place.id || place.place_id || '',
+            name: place.displayName || place.name || fallbackName,
+            address: place.formattedAddress || place.formatted_address || '',
             latitude: location?.lat ?? null,
             longitude: location?.lng ?? null,
-            googleMapsUrl: place.googleMapsURI || '',
+            googleMapsUrl: place.googleMapsURI || place.url || '',
           })
           if (location) {
             selectedPointRef.current = location
@@ -94,14 +96,38 @@ export function GooglePlaceSearch({ onSelect }) {
             showPoint(google, location)
           }
           setMessage('검색한 장소를 선택했습니다. 지도 핀과 입력 내용을 확인하세요.')
-        })
-        containerRef.current.replaceChildren(autocomplete)
+        }
+
+        if (google.maps.places.PlaceAutocompleteElement) {
+          autocomplete = new google.maps.places.PlaceAutocompleteElement()
+          autocomplete.setAttribute('aria-label', 'Google 장소 검색')
+          autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+            const place = placePrediction.toPlace()
+            await place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI'] })
+            applySelectedPlace(place, placePrediction.text?.toString() || '')
+          })
+          containerRef.current.replaceChildren(autocomplete)
+        } else {
+          const input = document.createElement('input')
+          input.type = 'search'
+          input.className = 'google-place-legacy-input'
+          input.placeholder = '장소명이나 주소를 검색하세요'
+          input.setAttribute('aria-label', 'Google 장소 검색')
+          containerRef.current.replaceChildren(input)
+          autocomplete = new google.maps.places.Autocomplete(input, {
+            fields: ['place_id', 'name', 'formatted_address', 'geometry', 'url'],
+          })
+          autocompleteListener = autocomplete.addListener('place_changed', () => {
+            applySelectedPlace(autocomplete.getPlace(), input.value)
+          })
+        }
       })
       .catch((error) => setMessage(error.message))
 
     return () => {
       active = false
-      autocomplete?.remove()
+      autocompleteListener?.remove()
+      autocomplete?.remove?.()
     }
   }, [onSelect, showPoint])
 
@@ -112,7 +138,7 @@ export function GooglePlaceSearch({ onSelect }) {
     setMapLoading(true)
     loadGoogleMaps()
       .then(async (google) => {
-        await google.maps.importLibrary('maps')
+        if (google.maps.importLibrary) await google.maps.importLibrary('maps')
         if (!active || !mapContainerRef.current) return
         googleRef.current = google
         const initialPoint = selectedPointRef.current || { lat: 20, lng: 105 }

@@ -86,6 +86,8 @@ button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
 .empty-home button { padding: 12px 18px; border: 0; border-radius: 13px; background: #6555d9; color: white; font-weight: 800; }
 .google-place-search { display: grid; gap: 8px; padding: 12px; border: 1px solid #dfe1e8; border-radius: 14px; background: #f7f8fc; }
 .google-place-search gmp-place-autocomplete { width: 100%; }
+.google-place-legacy-input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d8dbe5; border-radius: 10px; background: white; color: #20232d; font: inherit; font-size: .78rem; }
+.google-place-legacy-input:focus { border-color: #7765e8; outline: 2px solid rgba(119,101,232,.15); }
 .google-place-search p { margin: 0; color: #777d8b; font-size: .7rem; line-height: 1.45; }
 .google-place-search a { color: #5846c9; font-size: .75rem; font-weight: 800; text-decoration: none; }
 .google-map-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
