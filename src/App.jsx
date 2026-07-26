@@ -542,6 +542,7 @@ function App() {
     }
     if (type === 'schedule') {
       setSchedulePlaceDraft({ place: item.place || '', address: item.address || '', latitude: item.latitude ?? '', longitude: item.longitude ?? '' })
+      setScheduleAgentNote('')
     }
     if (type === 'trip') {
       const country = COUNTRY_OPTIONS.find((option) => option[2] === item.currency)
@@ -1690,8 +1691,10 @@ function App() {
               </div>
               <div className="saved-list">{visibleSchedules.map((schedule) => {
                 const scheduleIndex = schedules.findIndex((item) => item.id === schedule.id)
-                const nextSchedule = schedules[scheduleIndex + 1] || null
-                const nextDistanceKm = getDistanceKm(schedule, nextSchedule)
+                const nextPlaceSchedule = schedules
+                  .slice(scheduleIndex + 1)
+                  .find((candidate) => getDistanceKm(schedule, candidate) !== null) || null
+                const nextDistanceKm = getDistanceKm(schedule, nextPlaceSchedule)
                 const rideService = getRideService(selectedTrip)
                 const canCallRide = nextDistanceKm !== null && nextDistanceKm >= 1 && nextDistanceKm <= 200
                 return (
@@ -1700,7 +1703,7 @@ function App() {
                 <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {formatMoney(schedule.completed ? schedule.actualCost : schedule.estimatedCost, schedule.costCurrency || selectedTrip?.currency || 'VND')}</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
-                  {canCallRide && <button type="button" onClick={() => openRideAppForSchedule(nextSchedule, selectedTrip, rideService)}>🚕 {rideService}</button>}
+                  {canCallRide && <button type="button" onClick={() => openRideAppForSchedule(nextPlaceSchedule, selectedTrip, rideService)}>🚕 {rideService}</button>}
                   <button type="button" onClick={() => downloadScheduleCalendar(schedule, selectedTrip)}>🔔 알림</button>
                   {canEditTrip && <>
                   <button type="button" onClick={() => openTripPhotoDialog(schedule)}>📷 사진</button>
@@ -1710,8 +1713,7 @@ function App() {
                   </>}
                 </div>
                 {(schedule.reservationSite || schedule.reservationReference || schedule.reservationUrl) && <div className="reservation-link">{schedule.reservationUrl ? <a href={schedule.reservationUrl} target="_blank" rel="noreferrer">{schedule.reservationSite || '예약 사이트'} 열기</a> : <strong>{schedule.reservationSite || '예약 정보'}</strong>}{schedule.reservationReference && <span>예약번호 {schedule.reservationReference}</span>}</div>}
-                {nextSchedule && nextDistanceKm !== null && <div className={`next-route-summary ${nextDistanceKm < 1 ? 'is-walk' : nextDistanceKm > 200 ? 'is-long-distance' : ''}`}><span>{nextDistanceKm < 1 ? '🚶' : nextDistanceKm > 200 ? '✈️' : '🚕'}</span><strong>다음 일정까지 약 {formatDistance(nextDistanceKm)}</strong><small>{nextSchedule.title} · {nextDistanceKm < 1 ? '도보 이동 권장' : nextDistanceKm > 200 ? '장거리 이동 구간' : `${rideService} 호출 가능`}</small></div>}
-                {nextSchedule && nextDistanceKm === null && <div className="next-route-summary is-unavailable"><span>📍</span><strong>다음 일정 거리 계산 준비가 필요해요</strong><small>현재 일정과 다음 일정을 수정해 Google 지도에서 장소를 선택해 주세요.</small></div>}
+                {nextPlaceSchedule && nextDistanceKm !== null && <div className={`next-route-summary ${nextDistanceKm < 1 ? 'is-walk' : nextDistanceKm > 200 ? 'is-long-distance' : ''}`}><span>{nextDistanceKm < 1 ? '🚶' : nextDistanceKm > 200 ? '✈️' : '🚕'}</span><strong>다음 장소까지 약 {formatDistance(nextDistanceKm)}</strong><small>{nextPlaceSchedule.title} · {nextDistanceKm < 1 ? '도보 이동 권장' : nextDistanceKm > 200 ? '장거리 이동 구간' : `${rideService} 호출 가능`}</small></div>}
               </div>
                 )
               })}</div>

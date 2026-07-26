@@ -68,10 +68,15 @@ export function GooglePlaceSearch({ onSelect }) {
     let active = true
     let autocomplete
     let autocompleteListener
+    let fallbackForm
+    let fallbackSubmit
 
     loadGoogleMaps()
       .then(async (google) => {
-        if (google.maps.importLibrary) await google.maps.importLibrary('places')
+        let placesLibrary = google.maps.places
+        if (typeof google.maps.importLibrary === 'function') {
+          placesLibrary = await google.maps.importLibrary('places') || placesLibrary
+        }
         if (!active || !containerRef.current) return
         googleRef.current = google
 
@@ -87,7 +92,9 @@ export function GooglePlaceSearch({ onSelect }) {
             address: place.formattedAddress || place.formatted_address || '',
             latitude: location?.lat ?? null,
             longitude: location?.lng ?? null,
-            googleMapsUrl: place.googleMapsURI || place.url || '',
+            googleMapsUrl: place.googleMapsURI || place.url || (location
+              ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`
+              : ''),
           })
           if (location) {
             selectedPointRef.current = location
@@ -98,8 +105,8 @@ export function GooglePlaceSearch({ onSelect }) {
           setMessage('검색한 장소를 선택했습니다. 지도 핀과 입력 내용을 확인하세요.')
         }
 
-        if (google.maps.places.PlaceAutocompleteElement) {
-          autocomplete = new google.maps.places.PlaceAutocompleteElement()
+        if (placesLibrary?.PlaceAutocompleteElement) {
+          autocomplete = new placesLibrary.PlaceAutocompleteElement()
           autocomplete.setAttribute('aria-label', 'Google 장소 검색')
           autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
             const place = placePrediction.toPlace()
@@ -107,19 +114,54 @@ export function GooglePlaceSearch({ onSelect }) {
             applySelectedPlace(place, placePrediction.text?.toString() || '')
           })
           containerRef.current.replaceChildren(autocomplete)
-        } else {
+        } else if (placesLibrary?.Autocomplete) {
           const input = document.createElement('input')
           input.type = 'search'
           input.className = 'google-place-legacy-input'
           input.placeholder = '장소명이나 주소를 검색하세요'
           input.setAttribute('aria-label', 'Google 장소 검색')
           containerRef.current.replaceChildren(input)
-          autocomplete = new google.maps.places.Autocomplete(input, {
+          autocomplete = new placesLibrary.Autocomplete(input, {
             fields: ['place_id', 'name', 'formatted_address', 'geometry', 'url'],
           })
           autocompleteListener = autocomplete.addListener('place_changed', () => {
             applySelectedPlace(autocomplete.getPlace(), input.value)
           })
+        } else {
+          fallbackForm = document.createElement('form')
+          fallbackForm.className = 'google-place-fallback-form'
+          const input = document.createElement('input')
+          input.type = 'search'
+          input.className = 'google-place-legacy-input'
+          input.placeholder = '장소명이나 주소를 입력하세요'
+          input.setAttribute('aria-label', 'Google 장소 검색')
+          const button = document.createElement('button')
+          button.type = 'submit'
+          button.textContent = '검색'
+          fallbackForm.append(input, button)
+          containerRef.current.replaceChildren(fallbackForm)
+          fallbackSubmit = async (event) => {
+            event.preventDefault()
+            const query = input.value.trim()
+            if (!query) {
+              setMessage('찾을 장소명이나 주소를 입력해 주세요.')
+              return
+            }
+            setMessage('Google 지도에서 장소를 찾고 있습니다…')
+            try {
+              const response = await new google.maps.Geocoder().geocode({ address: query })
+              const result = response.results?.[0]
+              if (!result) {
+                setMessage('검색 결과가 없습니다. 도시 이름과 장소명을 함께 입력해 주세요.')
+                return
+              }
+              applySelectedPlace(result, query)
+            } catch {
+              setMessage('장소를 찾지 못했습니다. 도시 이름과 장소명을 함께 입력해 주세요.')
+            }
+          }
+          fallbackForm.addEventListener('submit', fallbackSubmit)
+          setMessage('장소명을 입력해 Google 지도에서 검색하거나 지도에서 직접 선택하세요.')
         }
       })
       .catch((error) => setMessage(error.message))
@@ -128,6 +170,7 @@ export function GooglePlaceSearch({ onSelect }) {
       active = false
       autocompleteListener?.remove()
       autocomplete?.remove?.()
+      if (fallbackForm && fallbackSubmit) fallbackForm.removeEventListener('submit', fallbackSubmit)
     }
   }, [onSelect, showPoint])
 
