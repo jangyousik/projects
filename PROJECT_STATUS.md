@@ -226,3 +226,41 @@
 다음 작업을 시작할 때 다음처럼 요청하면 된다.
 
 > 여행온 프로젝트 상태 문서를 확인하고, Excel 관리 버튼을 포함한 최신 웹 배포부터 진행하자.
+
+## 2026-07-26 통합 개발 (1~9단계)
+
+### 구현 완료
+
+- Android 개인 AI 직접 호출
+  - OpenAI Responses API 및 Gemini API 지원
+  - 키는 Android Keystore 암호화 저장, JavaScript·Supabase·Vercel로 전달하지 않음
+  - 여행온 기본 AI / 개인 AI 선택과 연결 확인 버튼
+- 여행 사진 촬영일·연결 일정·장소·메모 저장 및 갤러리 표시
+- 영수증 OCR 금액 후보와 인식 원문 확인 후 실제 금액 저장
+- 게시판 글쓰기·검색·삭제·신고·작성자 차단
+- 관리자 신고 검토·게시글 숨김 구조
+- 여행 체크리스트와 예약 문서 비공개 Storage 보관함
+- 일정 `.ics` 캘린더 등록 및 30분 전 알림
+- 다크모드, 날씨·환율 런타임 캐시, ExcelJS 지연 로딩
+- 최신 Android 디버그 APK 빌드 성공
+  - `android/app/build/outputs/apk/debug/app-debug.apk`
+
+### 새 마이그레이션
+
+- `014_photo_metadata.sql`
+- `015_receipt_metadata.sql`
+- `016_community_board.sql`
+- `017_trip_checklists.sql`
+
+### 검증 결과
+
+- `npm run build`: 성공
+- `npm run lint`: 성공
+- Android `assembleDebug`: 성공
+- APK 크기: 약 250MB(디버그 빌드)
+
+### 배포 전 남은 필수 작업
+
+Windows 애플리케이션 제어 정책이 다운로드된 Supabase CLI를 차단해 `014`~`017`을 원격 DB에 자동 적용하지 못했다. SQL Editor에서 네 파일을 번호 순서대로 실행한 뒤에만 공개 배포해야 한다. 새 컬럼이 없는 상태에서 새 프런트엔드를 먼저 배포하면 여행 상세 조회가 실패할 수 있다.
+
+GitHub CLI 인증 토큰도 만료되어 원격 푸시가 보류됐다. `gh auth login -h github.com` 재인증 후 커밋·푸시한다.

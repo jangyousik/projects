@@ -43,6 +43,18 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         navigateFallback: 'index.html',
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/api\.open-meteo\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'travelon-weather', expiration: { maxEntries: 12, maxAgeSeconds: 21600 } },
+          },
+          {
+            urlPattern: /^https:\/\/open\.er-api\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'travelon-rates', expiration: { maxEntries: 4, maxAgeSeconds: 86400 } },
+          },
+        ],
       },
     }),
   ],
