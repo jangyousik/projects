@@ -49,6 +49,35 @@ function getScheduleMapUrl(schedule, trip) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
 
+function getDistanceKm(from, to) {
+  const coordinates = [from?.latitude, from?.longitude, to?.latitude, to?.longitude]
+  if (coordinates.some((value) => value === null || value === undefined || value === '')) return null
+  const lat1 = Number(from?.latitude)
+  const lon1 = Number(from?.longitude)
+  const lat2 = Number(to?.latitude)
+  const lon2 = Number(to?.longitude)
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return null
+  const radians = (value) => value * Math.PI / 180
+  const earthRadiusKm = 6371
+  const deltaLat = radians(lat2 - lat1)
+  const deltaLon = radians(lon2 - lon1)
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(deltaLon / 2) ** 2
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function formatDistance(distanceKm) {
+  if (distanceKm < 1) return `${Math.max(10, Math.round(distanceKm * 1000 / 10) * 10).toLocaleString('ko-KR')}m`
+  return `${distanceKm < 10 ? distanceKm.toFixed(1) : Math.round(distanceKm).toLocaleString('ko-KR')}km`
+}
+
+function getRideService(trip) {
+  const destination = String(trip?.destination || '').toLowerCase()
+  const grabDestination = /베트남|vietnam|태국|thailand|싱가포르|singapore|말레이시아|malaysia|인도네시아|indonesia|필리핀|philippines|미얀마|myanmar|캄보디아|cambodia/.test(destination)
+  const grabCurrency = ['VND', 'THB', 'SGD', 'MYR', 'IDR', 'PHP'].includes(trip?.currency)
+  return grabDestination || grabCurrency ? 'Grab' : 'Uber'
+}
+
 function getTripCountdown(trip) {
   const todayText = getLocalDateText()
   const today = parseCalendarDate(todayText)
@@ -180,19 +209,33 @@ function buildTripBudgetSummary(trip, schedules = [], expenses = [], exchangeRat
   ]
 }
 
-async function openGrabForSchedule(schedule, trip) {
+async function openRideAppForSchedule(schedule, trip, service) {
   const destination = [schedule.place, schedule.address, schedule.title, trip?.destination].filter(Boolean).join(', ')
   try { await navigator.clipboard.writeText(destination) } catch { /* Clipboard permission is optional. */ }
 
-  if (Capacitor.isNativePlatform()) {
+  if (service === 'Grab' && Capacitor.isNativePlatform()) {
     try {
       await ExternalApps.openGrab()
       return
     } catch { /* Older APKs fall through to the Android intent. */ }
   }
 
-  const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=com.grabtaxi.passenger')
-  window.location.href = `intent://open?screenType=BOOKING#Intent;scheme=grab;package=com.grabtaxi.passenger;S.browser_fallback_url=${fallback};end`
+  if (service === 'Grab') {
+    const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=com.grabtaxi.passenger')
+    window.location.href = `intent://open?screenType=BOOKING#Intent;scheme=grab;package=com.grabtaxi.passenger;S.browser_fallback_url=${fallback};end`
+    return
+  }
+
+  const params = new URLSearchParams({
+    action: 'setPickup',
+    pickup: 'my_location',
+    'dropoff[formatted_address]': destination,
+  })
+  if (Number.isFinite(Number(schedule.latitude)) && Number.isFinite(Number(schedule.longitude))) {
+    params.set('dropoff[latitude]', schedule.latitude)
+    params.set('dropoff[longitude]', schedule.longitude)
+  }
+  window.location.href = `https://m.uber.com/ul/?${params.toString()}`
 }
 
 function App() {
@@ -219,7 +262,7 @@ function App() {
   const [excelPreview, setExcelPreview] = useState([])
   const [excelFileName, setExcelFileName] = useState('')
   const [placeDraft, setPlaceDraft] = useState({ name: '', address: '', memo: '', googlePlaceId: '', googleMapsUrl: '', latitude: '', longitude: '' })
-  const [schedulePlaceDraft, setSchedulePlaceDraft] = useState({ place: '', address: '' })
+  const [schedulePlaceDraft, setSchedulePlaceDraft] = useState({ place: '', address: '', latitude: '', longitude: '' })
   const [scheduleAgentNote, setScheduleAgentNote] = useState('')
   const [scheduleAgentLoading, setScheduleAgentLoading] = useState(false)
   const [scheduleVoiceListening, setScheduleVoiceListening] = useState(false)
@@ -349,7 +392,7 @@ function App() {
           .order('created_at', { ascending: true }),
         supabase
           .from('schedule_items')
-          .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,sort_order,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
+          .select('id,day_date,start_time,title,place_name,address,latitude,longitude,memo,completed,estimated_cost,actual_cost,sort_order,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
           .eq('trip_id', selectedTripId)
           .order('day_date', { ascending: true })
           .order('start_time', { ascending: true }),
@@ -375,14 +418,21 @@ function App() {
       if (placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error || photosResult.error) {
         setItemMessage(`여행 정보를 불러오지 못했습니다: ${(placesResult.error || schedulesResult.error || expensesResult.error || membersResult.error || photosResult.error).message}`)
       } else {
-        setPlaces(placesResult.data || [])
-        setSchedules((schedulesResult.data || []).map((item) => ({
+        const savedPlaces = placesResult.data || []
+        setPlaces(savedPlaces)
+        setSchedules((schedulesResult.data || []).map((item) => {
+          const matchedPlace = savedPlaces.find((place) =>
+            (item.place_name && place.name?.trim() === item.place_name.trim())
+            || (item.address && place.address?.trim() === item.address.trim()))
+          return {
           id: item.id,
           title: item.title,
           date: item.day_date,
           time: item.start_time?.slice(0, 5) || '',
           place: item.place_name,
           address: item.address,
+          latitude: item.latitude ?? matchedPlace?.latitude ?? null,
+          longitude: item.longitude ?? matchedPlace?.longitude ?? null,
           memo: item.memo,
           completed: item.completed,
           estimatedCost: Number(item.estimated_cost),
@@ -394,7 +444,8 @@ function App() {
           costCategory: item.cost_category,
           paymentMethod: item.payment_method,
           costCurrency: item.cost_currency,
-        })))
+          }
+        }))
         setExpenses((expensesResult.data || []).map((expense) => ({
           id: expense.id,
           scheduleItemId: expense.schedule_item_id,
@@ -472,7 +523,7 @@ function App() {
       setItemMessage('보기 전용 멤버는 내용을 추가하거나 변경할 수 없습니다.')
     } else {
       if (type === 'schedule') {
-        setSchedulePlaceDraft({ place: '', address: '' })
+        setSchedulePlaceDraft({ place: '', address: '', latitude: '', longitude: '' })
         setScheduleAgentNote('')
       }
       setDialog(type)
@@ -490,7 +541,7 @@ function App() {
       })
     }
     if (type === 'schedule') {
-      setSchedulePlaceDraft({ place: item.place || '', address: item.address || '' })
+      setSchedulePlaceDraft({ place: item.place || '', address: item.address || '', latitude: item.latitude ?? '', longitude: item.longitude ?? '' })
     }
     if (type === 'trip') {
       const country = COUNTRY_OPTIONS.find((option) => option[2] === item.currency)
@@ -632,7 +683,12 @@ function App() {
   }, [])
 
   const selectScheduleGooglePlace = useCallback((place) => {
-    setSchedulePlaceDraft({ place: place.name || '', address: place.address || '' })
+    setSchedulePlaceDraft({
+      place: place.name || '',
+      address: place.address || '',
+      latitude: place.latitude ?? '',
+      longitude: place.longitude ?? '',
+    })
   }, [])
 
   const startScheduleVoiceInput = async () => {
@@ -776,6 +832,8 @@ function App() {
         title: String(form.get('title')).trim(),
         place_name: String(form.get('place')).trim() || null,
         address: String(form.get('address')).trim() || null,
+        latitude: String(form.get('latitude')).trim() || null,
+        longitude: String(form.get('longitude')).trim() || null,
         memo: String(form.get('memo')).trim() || null,
         estimated_cost: Number(form.get('estimatedCost') || 0),
         reservation_status: String(form.get('reservationStatus') || 'none'),
@@ -790,7 +848,7 @@ function App() {
       ? supabase.from('schedule_items').update(values).eq('id', editingItem.item.id).eq('trip_id', selectedTripId)
       : supabase.from('schedule_items').insert({ ...values, trip_id: selectedTripId, created_by: session.user.id })
     const { data, error } = await query
-      .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
+      .select('id,day_date,start_time,title,place_name,address,latitude,longitude,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       .single()
     setItemLoading(false)
     if (error) {
@@ -804,6 +862,8 @@ function App() {
       time: data.start_time?.slice(0, 5) || '',
       place: data.place_name,
       address: data.address,
+      latitude: data.latitude,
+      longitude: data.longitude,
       memo: data.memo,
       completed: data.completed,
       estimatedCost: Number(data.estimated_cost),
@@ -1135,6 +1195,40 @@ function App() {
     setDialog(null)
   }
 
+  const publishTripToCommunity = async (event) => {
+    event.preventDefault()
+    if (!selectedTrip || !session || !supabase || itemLoading) return
+    const form = new FormData(event.currentTarget)
+    setItemLoading(true)
+    setItemMessage('')
+    const { error } = await supabase.from('community_posts').insert({
+      author_id: session.user.id,
+      author_name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '여행자',
+      source_trip_id: selectedTrip.id,
+      destination: selectedTrip.destination,
+      category: String(form.get('category') || 'review'),
+      title: String(form.get('title') || '').trim(),
+      content: String(form.get('content') || '').trim(),
+    })
+    setItemLoading(false)
+    if (error) {
+      setItemMessage(`게시판에 올리지 못했습니다: ${error.message}`)
+      return
+    }
+    setDialog(null)
+    setTripMessage('여행 이야기를 게시판에 올렸습니다.')
+    setScreen('community')
+  }
+
+  const getCommunityTripDraft = () => {
+    if (!selectedTrip) return ''
+    const completedCount = schedules.filter((schedule) => schedule.completed).length
+    const highlights = schedules.slice(0, 5).map((schedule) => `• ${schedule.title}${schedule.place ? ` — ${schedule.place}` : ''}`).join('\n')
+    return `${selectedTrip.startDate} ~ ${selectedTrip.endDate} · ${selectedTrip.people}명\n\n`
+      + `현재 일정 ${schedules.length}개${completedCount ? ` · 완료 ${completedCount}개` : ''}를 기록했어요.${tripPhotos.length ? ` 사진 ${tripPhotos.length}장도 저장했습니다.` : ''}\n\n`
+      + `${highlights ? `주요 일정\n${highlights}\n\n` : ''}여행 준비 과정, 현지 소식이나 다녀온 후기를 자유롭게 적어 주세요.`
+  }
+
   const updateMemberRole = async (member, role) => {
     setItemLoading(true)
     setItemMessage('')
@@ -1267,7 +1361,7 @@ function App() {
           created_by: session.user.id,
           sort_order: schedules.length + index,
         })))
-        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
+        .select('id,day_date,start_time,title,place_name,address,latitude,longitude,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       if (error) throw error
       const imported = (data || []).map((item) => ({
         id: item.id,
@@ -1276,6 +1370,8 @@ function App() {
         time: item.start_time?.slice(0, 5) || '',
         place: item.place_name,
         address: item.address,
+        latitude: item.latitude,
+        longitude: item.longitude,
         memo: item.memo,
         completed: item.completed,
         estimatedCost: Number(item.estimated_cost),
@@ -1369,11 +1465,11 @@ function App() {
       }
 
       const { data, error } = await supabase.from('schedule_items').insert(rows)
-        .select('id,day_date,start_time,title,place_name,address,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
+        .select('id,day_date,start_time,title,place_name,address,latitude,longitude,memo,completed,estimated_cost,actual_cost,reservation_status,reservation_site,reservation_reference,reservation_url,cost_category,payment_method,cost_currency')
       if (error) throw error
       const imported = data.map((item) => ({
         id: item.id, date: item.day_date, time: item.start_time?.slice(0, 5) || '', title: item.title,
-        place: item.place_name, address: item.address, memo: item.memo, completed: item.completed,
+        place: item.place_name, address: item.address, latitude: item.latitude, longitude: item.longitude, memo: item.memo, completed: item.completed,
         estimatedCost: Number(item.estimated_cost), actualCost: Number(item.actual_cost),
         reservationStatus: item.reservation_status, reservationSite: item.reservation_site,
         reservationReference: item.reservation_reference, reservationUrl: item.reservation_url,
@@ -1505,6 +1601,7 @@ function App() {
           <section className="trip-detail-header">
             <button type="button" onClick={() => { setSetupTripId(null); setScreen('home') }} aria-label="여행 목록으로 돌아가기">←</button>
             <div><p>{selectedTrip.destination}</p><h2>{selectedTrip.title}</h2><small>{selectedTrip.startDate} ~ {selectedTrip.endDate} · {selectedTrip.people}명</small></div>
+            <button className="trip-community-button" type="button" onClick={() => { setItemMessage(''); setDialog('trip-publish') }}>☁ 게시판</button>
           </section>
         )}
 
@@ -1591,13 +1688,19 @@ function App() {
                 return <button className={activeScheduleDate === date ? 'is-active' : ''} type="button" role="tab" aria-selected={activeScheduleDate === date} onClick={() => setSelectedScheduleDate(date)} key={date}><strong>{dateValue.getDate()}</strong><small>{new Intl.DateTimeFormat('ko-KR', { weekday: 'short' }).format(dateValue)} · {subtitle}</small></button>
               })}
               </div>
-              <div className="saved-list">{visibleSchedules.map((schedule) => (
+              <div className="saved-list">{visibleSchedules.map((schedule) => {
+                const scheduleIndex = schedules.findIndex((item) => item.id === schedule.id)
+                const nextSchedule = schedules[scheduleIndex + 1] || null
+                const nextDistanceKm = getDistanceKm(schedule, nextSchedule)
+                const rideService = getRideService(selectedTrip)
+                const canCallRide = nextDistanceKm !== null && nextDistanceKm >= 1 && nextDistanceKm <= 200
+                return (
               <div className={`saved-trip schedule-row ${schedule.completed ? 'is-completed' : ''}`} key={schedule.id}>
                 <span className="schedule-date"><strong>{schedule.time || '일정'}</strong><small>{schedule.time ? '시간' : schedule.date.slice(5)}</small></span>
                 <span><strong>{schedule.title}</strong><small>{schedule.place || schedule.memo || '세부 내용 없음'}</small>{(schedule.actualCost > 0 || schedule.estimatedCost > 0) && <small className="schedule-cost">{schedule.completed ? '실제' : '예상'} {formatMoney(schedule.completed ? schedule.actualCost : schedule.estimatedCost, schedule.costCurrency || selectedTrip?.currency || 'VND')}</small>}{schedule.reservationStatus !== 'none' && <em className={`reservation-badge is-${schedule.reservationStatus}`}>{schedule.reservationStatus === 'booked' ? '예약 완료' : schedule.reservationStatus === 'planned' ? '예약 예정' : '취소됨'}</em>}</span>
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
-                  <button type="button" onClick={() => openGrabForSchedule(schedule, selectedTrip)}>🚕 Grab</button>
+                  {canCallRide && <button type="button" onClick={() => openRideAppForSchedule(nextSchedule, selectedTrip, rideService)}>🚕 {rideService}</button>}
                   <button type="button" onClick={() => downloadScheduleCalendar(schedule, selectedTrip)}>🔔 알림</button>
                   {canEditTrip && <>
                   <button type="button" onClick={() => openTripPhotoDialog(schedule)}>📷 사진</button>
@@ -1607,8 +1710,11 @@ function App() {
                   </>}
                 </div>
                 {(schedule.reservationSite || schedule.reservationReference || schedule.reservationUrl) && <div className="reservation-link">{schedule.reservationUrl ? <a href={schedule.reservationUrl} target="_blank" rel="noreferrer">{schedule.reservationSite || '예약 사이트'} 열기</a> : <strong>{schedule.reservationSite || '예약 정보'}</strong>}{schedule.reservationReference && <span>예약번호 {schedule.reservationReference}</span>}</div>}
+                {nextSchedule && nextDistanceKm !== null && <div className={`next-route-summary ${nextDistanceKm < 1 ? 'is-walk' : nextDistanceKm > 200 ? 'is-long-distance' : ''}`}><span>{nextDistanceKm < 1 ? '🚶' : nextDistanceKm > 200 ? '✈️' : '🚕'}</span><strong>다음 일정까지 약 {formatDistance(nextDistanceKm)}</strong><small>{nextSchedule.title} · {nextDistanceKm < 1 ? '도보 이동 권장' : nextDistanceKm > 200 ? '장거리 이동 구간' : `${rideService} 호출 가능`}</small></div>}
+                {nextSchedule && nextDistanceKm === null && <div className="next-route-summary is-unavailable"><span>📍</span><strong>다음 일정 거리 계산 준비가 필요해요</strong><small>현재 일정과 다음 일정을 수정해 Google 지도에서 장소를 선택해 주세요.</small></div>}
               </div>
-              ))}</div>
+                )
+              })}</div>
             </> : <div className="schedule-empty"><span aria-hidden="true">🗓️</span><strong>아직 등록된 일정이 없어요</strong><p>날짜와 시간을 선택해 첫 일정을 만들어 보세요.</p>{canEditTrip && <button type="button" onClick={() => openItemDialog('schedule')}>첫 일정 추가</button>}</div>}
           </section>
         )}
@@ -1728,7 +1834,7 @@ function App() {
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null) }}>
           <section className={`app-dialog${dialog === 'excel-preview' ? ' excel-preview-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
             <div className="dialog-handle" />
-            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : dialog === 'schedule-complete' ? '일정 마무리' : dialog === 'trip-photo' ? '여행의 순간' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'schedule-complete' ? '완료 및 영수증 저장' : dialog === 'trip-photo' ? '여행 사진 저장' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null); setCompletionSchedule(null) }} aria-label="닫기">×</button></div>
+            <div className="dialog-heading"><div><p className="section-label">{dialog === 'auth' ? '여행온 계정' : dialog === 'excel-preview' ? 'Excel 자동 분석' : dialog === 'schedule-complete' ? '일정 마무리' : dialog === 'trip-photo' ? '여행의 순간' : dialog === 'trip-publish' ? '여행자들과 나누기' : '새로운 기록'}</p><h2 id="dialog-title">{dialog === 'trip' ? '새 여행 만들기' : dialog === 'trip-edit' ? '여행 수정' : dialog === 'schedule' ? '새 일정 만들기' : dialog === 'schedule-edit' ? '일정 수정' : dialog === 'schedule-complete' ? '완료 및 영수증 저장' : dialog === 'trip-photo' ? '여행 사진 저장' : dialog === 'trip-publish' ? '게시판에 여행 올리기' : dialog === 'place-edit' ? '장소 수정' : dialog === 'expense' ? '경비 기록' : dialog === 'expense-edit' ? '경비 수정' : dialog === 'share' ? '여행 공유' : dialog === 'excel-preview' ? '분석 결과 확인' : dialog === 'auth' ? '로그인' : '장소 저장'}</h2></div><button type="button" onClick={() => { setDialog(null); setEditingItem(null); setCompletionSchedule(null) }} aria-label="닫기">×</button></div>
             {dialog === 'excel-preview' ? (
               <div className="excel-preview-panel">
                 <p><strong>{excelFileName}</strong>에서 {excelPreview.length}개 일정을 찾았습니다. 잘못 분류된 내용은 여기서 고친 뒤 저장하세요.</p>
@@ -1794,6 +1900,16 @@ function App() {
                 {tripMessage && <p className="auth-message" role="alert">{tripMessage}</p>}
                 <button className="dialog-submit" type="submit" disabled={tripsLoading}>{tripsLoading ? '저장 중…' : '여행 저장'}</button>
               </form>
+            ) : dialog === 'trip-publish' ? (
+              <form onSubmit={publishTripToCommunity}>
+                <div className="community-trip-preview"><span>✈️</span><div><strong>{selectedTrip?.title}</strong><small>{selectedTrip?.destination} · {selectedTrip?.startDate} ~ {selectedTrip?.endDate}</small></div></div>
+                <label>게시글 분류<select name="category" defaultValue={getLocalDateText() < selectedTrip?.startDate ? 'tip' : 'review'}><option value="tip">여행 준비·팁</option><option value="review">여행 소식·후기</option><option value="question">질문</option><option value="companion">동행</option></select></label>
+                <label>제목<input name="title" required minLength="2" maxLength="120" defaultValue={`${selectedTrip?.title} 이야기`} /></label>
+                <label>내용<textarea name="content" required minLength="2" maxLength="4000" defaultValue={getCommunityTripDraft()} /></label>
+                <p className="auth-notice">공개 게시판에 올라갑니다. 예약번호·전화번호·숙소 객실번호 등 개인정보가 없는지 확인해 주세요.</p>
+                {itemMessage && <p className="auth-message" role="alert">{itemMessage}</p>}
+                <div className="dialog-actions"><button className="dialog-cancel" type="button" onClick={() => setDialog(null)}>취소</button><button className="dialog-submit" type="submit" disabled={itemLoading}>{itemLoading ? '게시 중…' : '게시판에 올리기'}</button></div>
+              </form>
             ) : dialog === 'share' ? (
               <form onSubmit={shareTrip}>
                 <label>가입한 사용자 이메일<input name="email" type="email" required placeholder="family@example.com" /></label>
@@ -1831,8 +1947,10 @@ function App() {
                 <label>일정 이름<input name="title" required placeholder="예: 공항으로 출발" defaultValue={editingItem?.item.title || ''} /></label>
                 <div className="form-row"><label>날짜<input name="date" type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} defaultValue={editingItem?.item.date || selectedScheduleDate || selectedTrip?.startDate || ''} required /></label><label>시간<input name="time" type="time" defaultValue={editingItem?.item.time || ''} required /></label></div>
                 <div className="schedule-map-search"><strong><span aria-hidden="true">📍</span> Google 지도에서 장소 찾기</strong><GooglePlaceSearch onSelect={selectScheduleGooglePlace} /></div>
-                <label>장소<input name="place" placeholder="예: 인천국제공항" value={schedulePlaceDraft.place} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, place: event.target.value }))} /></label>
-                <label>주소<input name="address" placeholder="Google 지도에서 선택하면 자동 입력됩니다" value={schedulePlaceDraft.address} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, address: event.target.value }))} /></label>
+                <label>장소<input name="place" placeholder="예: 인천국제공항" value={schedulePlaceDraft.place} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, place: event.target.value, latitude: '', longitude: '' }))} /></label>
+                <label>주소<input name="address" placeholder="Google 지도에서 선택하면 자동 입력됩니다" value={schedulePlaceDraft.address} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, address: event.target.value, latitude: '', longitude: '' }))} /></label>
+                <input type="hidden" name="latitude" value={schedulePlaceDraft.latitude} />
+                <input type="hidden" name="longitude" value={schedulePlaceDraft.longitude} />
                 <label>메모<textarea name="memo" maxLength="300" placeholder="준비물이나 세부 내용을 기록하세요" defaultValue={editingItem?.item.memo || ''} /></label>
                 <div className="form-row"><label>비용 분류<select name="costCategory" defaultValue={editingItem?.item.costCategory || 'other'}><option value="flight">항공</option><option value="accommodation">숙소</option><option value="food">식비</option><option value="transport">교통</option><option value="activity">관광·체험</option><option value="shopping">쇼핑</option><option value="other">기타</option></select></label><label>결제 방법<select name="paymentMethod" defaultValue={editingItem?.item.paymentMethod || 'either'}><option value="cash">현금만</option><option value="card">카드 가능</option><option value="either">현금·카드 모두</option><option value="prepaid">예약·선결제</option></select></label></div>
                 <div className="form-row"><label>예상 비용<input name="estimatedCost" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={editingItem?.item.estimatedCost || 0} /></label><label>통화<select name="costCurrency" defaultValue={editingItem?.item.costCurrency || selectedTrip?.currency || 'VND'}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>

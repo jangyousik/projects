@@ -15,8 +15,13 @@ export function CommunityBoard({ session }) {
 
   const load = useCallback(async () => {
     setLoading(true)
+    const loadPosts = async () => {
+      const result = await supabase.from('community_posts').select('id,author_id,author_name,destination,category,title,content,created_at,source_trip_id').order('created_at', { ascending: false }).limit(100)
+      if (result.error?.code !== '42703') return result
+      return supabase.from('community_posts').select('id,author_id,author_name,destination,category,title,content,created_at').order('created_at', { ascending: false }).limit(100)
+    }
     const [postResult, blockResult, reportResult] = await Promise.all([
-      supabase.from('community_posts').select('id,author_id,author_name,destination,category,title,content,created_at').order('created_at', { ascending: false }).limit(100),
+      loadPosts(),
       supabase.from('user_blocks').select('blocked_id').eq('blocker_id', session.user.id),
       isAdmin ? supabase.from('community_reports').select('id,post_id,reason,status,created_at,community_posts(title)').eq('status', 'pending').order('created_at') : Promise.resolve({ data: [], error: null }),
     ])
@@ -94,7 +99,7 @@ export function CommunityBoard({ session }) {
     {message && <p className="auth-message" role="status">{message}</p>}
     {isAdmin && reports.length > 0 && <section className="moderation-panel"><h3>신고 검토 {reports.length}건</h3>{reports.map((report) => <article key={report.id}><strong>{report.community_posts?.title || '삭제된 글'}</strong><p>{report.reason}</p><div><button type="button" onClick={() => moderate(report, false)}>기각</button><button type="button" onClick={() => moderate(report, true)}>글 숨김</button></div></article>)}</section>}
     {loading ? <p className="community-empty">게시글을 불러오는 중…</p> : visiblePosts.length ? <div className="community-list">{visiblePosts.map((post) => <article key={post.id}>
-      <div><span>{CATEGORY[post.category] || '여행 이야기'}</span>{post.destination && <small>📍 {post.destination}</small>}</div>
+      <div><span>{CATEGORY[post.category] || '여행 이야기'}</span>{post.destination && <small>📍 {post.destination}{post.source_trip_id ? ' · 여행에서 공유' : ''}</small>}</div>
       <h3>{post.title}</h3><p>{post.content}</p>
       <footer><small>{post.author_name} · {new Date(post.created_at).toLocaleDateString('ko-KR')}</small><span>{post.author_id === session.user.id ? <button type="button" onClick={() => deletePost(post)}>삭제</button> : <><button type="button" onClick={() => report(post)}>신고</button><button type="button" onClick={() => blockAuthor(post)}>차단</button></>}</span></footer>
     </article>)}</div> : <p className="community-empty">조건에 맞는 여행 이야기가 없습니다.</p>}
