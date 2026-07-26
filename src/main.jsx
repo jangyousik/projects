@@ -4,6 +4,8 @@ import './index.css'
 import App from './App.jsx'
 
 const privacyCacheVersion = 'auth-privacy-v2'
+document.documentElement.dataset.theme = localStorage.getItem('travelon-theme')
+  || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 
 async function refreshLegacyAppCache() {
   if (!('caches' in window) || localStorage.getItem('privacy-cache-version') === privacyCacheVersion) return

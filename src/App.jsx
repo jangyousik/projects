@@ -6,12 +6,14 @@ import { AuthPanel } from './components/AuthPanel'
 import { GooglePlaceSearch } from './components/GooglePlaceSearch'
 import { TripLiveTools } from './components/TripLiveTools'
 import { PersonalAiSettings } from './components/PersonalAiSettings'
+import { CommunityBoard } from './components/CommunityBoard'
+import { TripEssentials } from './components/TripEssentials'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
-import { downloadScheduleTemplate, exportTripSchedule, readScheduleWorkbook, readWorkbookForAi } from './lib/tripExcel'
 
 const ExternalApps = registerPlugin('ExternalApps')
 const ReceiptOcr = registerPlugin('ReceiptOcr')
+const SecureAi = registerPlugin('SecureAi')
 
 const CURRENCY_OPTIONS = [
   ['VND', '베트남 동'], ['KRW', '한국 원'], ['USD', '미국 달러'], ['JPY', '일본 엔'],
@@ -101,6 +103,33 @@ function findReceiptAmount(text) {
   if (preferred.length) return Math.max(...preferred)
   const candidates = lines.flatMap(amountFrom).filter((amount) => amount >= 100)
   return candidates.length ? Math.max(...candidates) : 0
+}
+
+function downloadScheduleCalendar(schedule, trip) {
+  const start = `${schedule.date.replaceAll('-', '')}T${(schedule.time || '09:00').replace(':', '')}00`
+  const escape = (value) => String(value || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n')
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TravelOn//KR', 'BEGIN:VEVENT',
+    `UID:${schedule.id}@travelon`, `DTSTART:${start}`, `SUMMARY:${escape(schedule.title)}`,
+    `LOCATION:${escape(schedule.address || schedule.place || trip.destination)}`, `DESCRIPTION:${escape(schedule.memo || '')}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', `DESCRIPTION:${escape(schedule.title)} 이동을 준비하세요.`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
+  const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }))
+  const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${schedule.date}-${schedule.title}.ics`; anchor.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function findReceiptCandidates(text) {
+  const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const scored = []
+  lines.forEach((line, lineIndex) => {
+    const totalMatch = /총액|합계|결제금액|받을금액|total|amount|grand total|tổng|thanh toán|合計|お会計/i.test(line)
+    for (const match of line.matchAll(/\d[\d.,\s]*/g)) {
+      const amount = Number(match[0].replace(/[^0-9]/g, ''))
+      if (!Number.isFinite(amount) || amount < 100) continue
+      scored.push({ amount, label: line.slice(0, 80), score: (totalMatch ? 100 : 0) - lineIndex })
+    }
+  })
+  return [...new Map(scored.sort((a, b) => b.score - a.score || b.amount - a.amount).map((item) => [item.amount, item])).values()].slice(0, 5)
 }
 
 function buildTripBudgetSummary(trip, schedules = [], expenses = [], exchangeRates = null) {
@@ -199,8 +228,14 @@ function App() {
   const [receiptFile, setReceiptFile] = useState(null)
   const [receiptPreview, setReceiptPreview] = useState('')
   const [receiptStatus, setReceiptStatus] = useState('')
+  const [receiptText, setReceiptText] = useState('')
+  const [receiptCandidates, setReceiptCandidates] = useState([])
   const [tripPhotoFile, setTripPhotoFile] = useState(null)
   const [tripPhotoPreview, setTripPhotoPreview] = useState('')
+  const [tripPhotoDate, setTripPhotoDate] = useState('')
+  const [tripPhotoCaption, setTripPhotoCaption] = useState('')
+  const [tripPhotoPlace, setTripPhotoPlace] = useState('')
+  const [tripPhotoScheduleId, setTripPhotoScheduleId] = useState('')
   const [tripCountry, setTripCountry] = useState('VN')
   const [tripCurrency, setTripCurrency] = useState('VND')
   const [tripStartDate, setTripStartDate] = useState('')
@@ -330,7 +365,7 @@ function App() {
           .order('joined_at', { ascending: true }),
         supabase
           .from('attachments')
-          .select('id,storage_path,uploaded_by,created_at')
+          .select('id,storage_path,uploaded_by,created_at,captured_at,caption,place_name,schedule_item_id')
           .eq('trip_id', selectedTripId)
           .eq('kind', 'photo')
           .order('created_at', { ascending: false }),
@@ -659,26 +694,35 @@ function App() {
     setScheduleAgentLoading(true)
     setItemMessage('AI가 일정 내용을 정리하고 있습니다...')
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-schedule-draft', {
-        body: {
-          note: scheduleAgentNote,
-          selectedDate: editingItem?.item.date || selectedScheduleDate || selectedTrip.startDate,
-          trip: {
-            title: selectedTrip.title,
-            destination: selectedTrip.destination,
-            startDate: selectedTrip.startDate,
-            endDate: selectedTrip.endDate,
-            currency: selectedTrip.currency || 'VND',
-          },
+      const body = {
+        note: scheduleAgentNote,
+        selectedDate: editingItem?.item.date || selectedScheduleDate || selectedTrip.startDate,
+        trip: {
+          title: selectedTrip.title,
+          destination: selectedTrip.destination,
+          startDate: selectedTrip.startDate,
+          endDate: selectedTrip.endDate,
+          currency: selectedTrip.currency || 'VND',
         },
-      })
-      if (error) {
-        let message = error.message
-        if (error.context instanceof Response) {
-          const details = await error.context.json().catch(() => null)
-          if (details?.error) message = details.error
+      }
+      const personalProvider = localStorage.getItem('travelon-personal-ai-provider') || 'openai'
+      const usePersonalAi = Capacitor.isNativePlatform()
+        && localStorage.getItem('travelon-ai-route') === 'personal'
+      let data
+      if (usePersonalAi) {
+        data = await SecureAi.analyzeScheduleDraft({ provider: personalProvider, ...body })
+      } else {
+        const response = await supabase.functions.invoke('analyze-schedule-draft', { body })
+        data = response.data
+        const error = response.error
+        if (error) {
+          let message = error.message
+          if (error.context instanceof Response) {
+            const details = await error.context.json().catch(() => null)
+            if (details?.error) message = details.error
+          }
+          throw new Error(message)
         }
-        throw new Error(message)
       }
       const draft = data?.draft
       const form = scheduleFormRef.current
@@ -702,7 +746,9 @@ function App() {
         if (field) field.value = value
       })
       setSchedulePlaceDraft({ place: draft.place_name || '', address: draft.address_candidate || '' })
-      const quotaText = data?.quota ? ` · 오늘 ${data.quota.remaining}회 남음` : ''
+      const quotaText = usePersonalAi
+        ? ` · 내 ${personalProvider === 'gemini' ? 'Gemini' : 'OpenAI'}로 처리`
+        : data?.quota ? ` · 오늘 ${data.quota.remaining}회 남음` : ''
       setItemMessage(draft.warnings?.length
         ? `입력 가능한 항목을 먼저 채웠습니다. 저장 전 확인: ${draft.warnings.join(' · ')}${quotaText}`
         : `AI가 입력 가능한 항목을 모두 채웠습니다. 내용을 확인하고 저장해 주세요.${quotaText}`)
@@ -830,6 +876,8 @@ function App() {
     setReceiptFile(null)
     setReceiptPreview('')
     setReceiptStatus('')
+    setReceiptText('')
+    setReceiptCandidates([])
     setItemMessage('')
     setDialog('schedule-complete')
   }
@@ -837,6 +885,10 @@ function App() {
   const openTripPhotoDialog = () => {
     setTripPhotoFile(null)
     setTripPhotoPreview('')
+    setTripPhotoDate(selectedScheduleDate || selectedTrip?.startDate || getLocalDateText())
+    setTripPhotoCaption('')
+    setTripPhotoPlace('')
+    setTripPhotoScheduleId('')
     setItemMessage('')
     setDialog('trip-photo')
   }
@@ -853,6 +905,9 @@ function App() {
     }
     setTripPhotoFile(file)
     setTripPhotoPreview(URL.createObjectURL(file))
+    if (!tripPhotoDate && file.lastModified) {
+      setTripPhotoDate(new Date(file.lastModified).toISOString().slice(0, 10))
+    }
     setItemMessage('')
   }
 
@@ -877,7 +932,11 @@ function App() {
       uploaded_by: session.user.id,
       storage_path: storagePath,
       kind: 'photo',
-    }).select('id,storage_path,uploaded_by,created_at').single()
+      captured_at: tripPhotoDate ? `${tripPhotoDate}T12:00:00` : null,
+      caption: tripPhotoCaption.trim() || null,
+      place_name: tripPhotoPlace.trim() || null,
+      schedule_item_id: tripPhotoScheduleId || null,
+    }).select('id,storage_path,uploaded_by,created_at,captured_at,caption,place_name,schedule_item_id').single()
     if (attachmentError) {
       await supabase.storage.from('trip-files').remove([storagePath])
       setItemLoading(false)
@@ -890,6 +949,9 @@ function App() {
     setDialog(null)
     setTripPhotoFile(null)
     setTripPhotoPreview('')
+    setTripPhotoCaption('')
+    setTripPhotoPlace('')
+    setTripPhotoScheduleId('')
     setItemMessage('여행 사진을 안전하게 저장했습니다.')
   }
 
@@ -931,7 +993,10 @@ function App() {
     try {
       const dataUrl = await fileToDataUrl(file)
       const result = await ReceiptOcr.recognize({ dataUrl })
-      const detectedAmount = findReceiptAmount(result.text)
+      const candidates = findReceiptCandidates(result.text)
+      const detectedAmount = candidates[0]?.amount || findReceiptAmount(result.text)
+      setReceiptText(result.text || '')
+      setReceiptCandidates(candidates)
       if (detectedAmount > 0) {
         setCompletionAmount(String(detectedAmount))
         setReceiptStatus(`영수증에서 ${detectedAmount.toLocaleString('ko-KR')}을 찾았습니다. 금액을 확인해 주세요.`)
@@ -981,6 +1046,9 @@ function App() {
           uploaded_by: session.user.id,
           storage_path: storagePath,
           kind: 'receipt',
+          extracted_text: receiptText.slice(0, 10000) || null,
+          detected_amount: actualCost,
+          detected_currency: schedule.costCurrency || selectedTrip?.currency || 'VND',
         })
         if (attachmentError) receiptWarning = ` 영수증 정보 저장 실패: ${attachmentError.message}`
       }
@@ -1136,6 +1204,7 @@ function App() {
     setItemLoading(true)
     setItemMessage(`${file.name} 파일을 확인하고 있습니다...`)
     try {
+      const { readScheduleWorkbook, readWorkbookForAi } = await import('./lib/tripExcel')
       let rows
       let analysisWarnings = []
       let aiQuota = null
@@ -1236,6 +1305,7 @@ function App() {
     setItemLoading(true)
     setItemMessage('Excel 양식을 만들고 있습니다...')
     try {
+      const { downloadScheduleTemplate } = await import('./lib/tripExcel')
       await downloadScheduleTemplate(selectedTrip)
       setItemMessage('Excel 양식을 열거나 저장해 주세요. 작성 후 이 화면에서 업로드하면 됩니다.')
     } catch (error) {
@@ -1462,14 +1532,7 @@ function App() {
 
         {screen === 'settings' && session && <PersonalAiSettings />}
 
-        {screen === 'community' && session && (
-          <section className="community-coming-soon">
-            <span aria-hidden="true">🌏</span>
-            <h2>여행온 게시판</h2>
-            <p>한국인 여행자들이 직접 확인한 장소, 비용, 이동 팁을 안전하게 나누는 공간을 준비하고 있습니다.</p>
-            <div><strong>운영 원칙</strong><ul><li>광고성·허위 정보보다 실제 여행 경험을 우선합니다.</li><li>개인정보와 예약번호는 자동으로 숨길 수 있게 만듭니다.</li><li>신고·차단·관리 기능을 갖춘 뒤 글쓰기를 엽니다.</li></ul></div>
-          </section>
-        )}
+        {screen === 'community' && session && <CommunityBoard session={session} />}
 
         {isTripDetail && setupTripId === selectedTripId && (
           <section className="excel-section" aria-labelledby="excel-title">
@@ -1477,7 +1540,7 @@ function App() {
             <p>양식을 내려받아 일정을 입력한 뒤 그대로 업로드하세요. 예약 사이트와 예약 링크도 함께 등록됩니다.</p>
             <div className="excel-actions">
               <button type="button" onClick={downloadExcelTemplate} disabled={itemLoading}>양식 다운로드</button>
-              <button type="button" onClick={() => exportTripSchedule(selectedTrip, schedules)} disabled={!schedules.length}>현재 일정 내보내기</button>
+              <button type="button" onClick={async () => { const { exportTripSchedule } = await import('./lib/tripExcel'); await exportTripSchedule(selectedTrip, schedules) }} disabled={!schedules.length}>현재 일정 내보내기</button>
               {canEditTrip && <label className={`excel-upload-label primary${itemLoading ? ' is-disabled' : ''}`} htmlFor="schedule-excel-upload">Excel 업로드</label>}
               {isTripOwner && selectedTrip.destination.includes('하노이') && <button type="button" onClick={importLegacyHanoiSchedule} disabled={itemLoading}>기존 하노이 일정 가져오기</button>}
             </div>
@@ -1535,6 +1598,7 @@ function App() {
                 <div className="item-actions">
                   <a href={getScheduleMapUrl(schedule, selectedTrip)} target="_blank" rel="noreferrer">📍 지도</a>
                   <button type="button" onClick={() => openGrabForSchedule(schedule, selectedTrip)}>🚕 Grab</button>
+                  <button type="button" onClick={() => downloadScheduleCalendar(schedule, selectedTrip)}>🔔 알림</button>
                   {canEditTrip && <>
                   <button type="button" onClick={() => toggleSchedule(schedule)} disabled={itemLoading}>{schedule.completed ? '완료 취소' : '완료'}</button>
                   <button type="button" onClick={() => openEditDialog('schedule', schedule)}>수정</button>
@@ -1546,6 +1610,10 @@ function App() {
               ))}</div>
             </> : <div className="schedule-empty"><span aria-hidden="true">🗓️</span><strong>아직 등록된 일정이 없어요</strong><p>날짜와 시간을 선택해 첫 일정을 만들어 보세요.</p>{canEditTrip && <button type="button" onClick={() => openItemDialog('schedule')}>첫 일정 추가</button>}</div>}
           </section>
+        )}
+
+        {isTripDetail && (
+          <TripEssentials trip={selectedTrip} session={session} canEdit={canEditTrip} />
         )}
 
         {isTripDetail && (
@@ -1584,7 +1652,7 @@ function App() {
             {tripPhotos.length ? <div className="trip-photo-grid">{tripPhotos.map((photo) => (
               <figure key={photo.id}>
                 <a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={`${selectedTrip.title} 여행 사진`} loading="lazy" /></a>
-                <figcaption><time>{new Date(photo.created_at).toLocaleDateString('ko-KR')}</time>{canEditTrip && <button type="button" onClick={() => deleteTripPhoto(photo)}>삭제</button>}</figcaption>
+                <figcaption><span><time>{new Date(photo.captured_at || photo.created_at).toLocaleDateString('ko-KR')}</time>{photo.place_name && <small>{photo.place_name}</small>}{photo.caption && <small>{photo.caption}</small>}</span>{canEditTrip && <button type="button" onClick={() => deleteTripPhoto(photo)}>삭제</button>}</figcaption>
               </figure>
             ))}</div> : <div className="trip-photo-empty"><span>📷</span><strong>아직 저장한 여행 사진이 없어요</strong><p>음식, 풍경, 가족과의 순간을 여행별로 보관하세요.</p></div>}
           </section>
@@ -1681,6 +1749,9 @@ function App() {
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => selectTripPhoto(event.target.files?.[0])} />
                 </label>
                 {tripPhotoPreview && <img className="trip-photo-preview" src={tripPhotoPreview} alt="저장할 여행 사진 미리보기" />}
+                <div className="form-row"><label>촬영일<input type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} value={tripPhotoDate} onChange={(event) => setTripPhotoDate(event.target.value)} /></label><label>연결 일정<select value={tripPhotoScheduleId} onChange={(event) => { const id = event.target.value; setTripPhotoScheduleId(id); const item = schedules.find((schedule) => schedule.id === id); if (item) { setTripPhotoDate(item.date); setTripPhotoPlace(item.place || '') } }}><option value="">일정 연결 안 함</option>{schedules.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.date} · {schedule.title}</option>)}</select></label></div>
+                <label>장소<input value={tripPhotoPlace} onChange={(event) => setTripPhotoPlace(event.target.value)} placeholder="예: 후쿠오카 타워" /></label>
+                <label>사진 메모<input value={tripPhotoCaption} onChange={(event) => setTripPhotoCaption(event.target.value)} maxLength="200" placeholder="그날의 기억을 짧게 남겨보세요" /></label>
                 {itemMessage && <p className="auth-message" role="status">{itemMessage}</p>}
                 <div className="dialog-actions"><button className="dialog-cancel" type="button" onClick={() => setDialog(null)}>취소</button><button className="dialog-submit" type="submit" disabled={!tripPhotoFile || itemLoading}>{itemLoading ? '저장 중…' : '사진 저장'}</button></div>
               </form>
@@ -1699,6 +1770,8 @@ function App() {
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => readReceipt(event.target.files?.[0])} />
                 </label>
                 {receiptPreview && <img className="receipt-preview" src={receiptPreview} alt="선택한 영수증 미리보기" />}
+                {receiptCandidates.length > 1 && <label>인식한 금액 후보<select value={completionAmount} onChange={(event) => setCompletionAmount(event.target.value)}>{receiptCandidates.map((candidate) => <option key={candidate.amount} value={candidate.amount}>{candidate.amount.toLocaleString('ko-KR')} · {candidate.label}</option>)}</select></label>}
+                {receiptText && <details className="receipt-text-preview"><summary>인식한 글자 확인</summary><pre>{receiptText}</pre></details>}
                 {receiptStatus && <p className="auth-message" role="status">{receiptStatus}</p>}
                 <div className="dialog-actions">
                   <button type="button" onClick={() => { setDialog(null); setCompletionSchedule(null) }}>취소</button>

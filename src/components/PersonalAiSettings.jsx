@@ -10,18 +10,21 @@ const PROVIDERS = {
 
 export function PersonalAiSettings() {
   const [provider, setProvider] = useState('openai')
+  const [route, setRoute] = useState(() => localStorage.getItem('travelon-ai-route') || 'travelon')
   const [apiKey, setApiKey] = useState('')
   const [connected, setConnected] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('travelon-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
   const native = Capacitor.isNativePlatform()
 
   useEffect(() => {
     if (!native) return
+    if (route === 'personal') localStorage.setItem('travelon-personal-ai-provider', provider)
     SecureAi.hasSecret({ provider })
       .then(({ exists }) => setConnected(Boolean(exists)))
       .catch(() => setMessage('기기의 보안 저장소 상태를 확인하지 못했습니다.'))
-  }, [native, provider])
+  }, [native, provider, route])
 
   async function saveKey(event) {
     event.preventDefault()
@@ -58,6 +61,34 @@ export function PersonalAiSettings() {
     }
   }
 
+  async function testConnection() {
+    setBusy(true)
+    setMessage('개인 AI 연결을 확인하고 있습니다…')
+    try {
+      await SecureAi.testConnection({ provider })
+      setMessage(`${PROVIDERS[provider].name} 연결이 정상입니다.`)
+    } catch (error) {
+      setMessage(error.message || '연결을 확인하지 못했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function changeRoute(value) {
+    setRoute(value)
+    localStorage.setItem('travelon-ai-route', value)
+    localStorage.setItem('travelon-personal-ai-provider', provider)
+    setMessage(value === 'personal'
+      ? `일정 AI를 내 ${PROVIDERS[provider].name}로 직접 처리합니다.`
+      : '일정 AI를 여행온 기본 서비스로 처리합니다.')
+  }
+
+  function changeTheme(value) {
+    setTheme(value)
+    localStorage.setItem('travelon-theme', value)
+    document.documentElement.dataset.theme = value
+  }
+
   return (
     <section className="personal-ai-page" aria-labelledby="personal-ai-title">
       <div className="personal-ai-hero">
@@ -74,16 +105,18 @@ export function PersonalAiSettings() {
           <li>연결 삭제 시 이 기기에 저장된 키도 즉시 삭제합니다.</li>
         </ul>
       </div>
+      <div className="personal-ai-form"><label>화면 테마<select value={theme} onChange={(event) => changeTheme(event.target.value)}><option value="light">밝은 화면</option><option value="dark">어두운 화면</option></select></label></div>
 
       {!native ? (
         <div className="ai-web-warning"><strong>웹에서는 개인 키 연결을 지원하지 않습니다.</strong><p>브라우저 저장소는 키를 안전하게 보호할 수 없습니다. Android 앱의 설정 화면에서 연결해 주세요.</p></div>
       ) : (
         <form className="personal-ai-form" onSubmit={saveKey}>
           <label>AI 서비스<select value={provider} onChange={(event) => { setProvider(event.target.value); setMessage('') }}><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select></label>
+          <label>AI 사용 방식<select value={route} onChange={(event) => changeRoute(event.target.value)}><option value="travelon">여행온 기본 AI</option><option value="personal" disabled={!connected}>내 개인 AI 직접 사용</option></select></label>
           <div className={`ai-connection-state ${connected ? 'is-connected' : ''}`}><span>{connected ? '✓' : '!'}</span><div><strong>{PROVIDERS[provider].name} {connected ? '연결됨' : '연결 안 됨'}</strong><small>{connected ? '키는 이 기기의 보안 저장소에 있습니다.' : '본인의 API 키와 사용료 정책을 확인해 주세요.'}</small></div></div>
           <label>개인 API 키<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={PROVIDERS[provider].placeholder} autoComplete="off" spellCheck="false" /></label>
           <p className="key-caution">키를 복사한 뒤 다른 사람에게 보여주거나 메신저로 보내지 마세요. AI 회사의 사용 한도와 결제 한도도 직접 설정해 주세요.</p>
-          <div className="personal-ai-actions"><button type="submit" disabled={busy || !apiKey.trim()}>{busy ? '처리 중…' : connected ? '키 교체' : '안전하게 연결'}</button>{connected && <button className="danger" type="button" onClick={removeKey} disabled={busy}>연결 삭제</button>}</div>
+          <div className="personal-ai-actions"><button type="submit" disabled={busy || !apiKey.trim()}>{busy ? '처리 중…' : connected ? '키 교체' : '안전하게 연결'}</button>{connected && <button type="button" onClick={testConnection} disabled={busy}>연결 확인</button>}{connected && <button className="danger" type="button" onClick={removeKey} disabled={busy}>연결 삭제</button>}</div>
         </form>
       )}
 
