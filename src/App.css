@@ -88,6 +88,8 @@ button.live-tool-card { width: 100%; font: inherit; cursor: pointer; }
 .google-place-search gmp-place-autocomplete { width: 100%; }
 .google-place-legacy-input { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #d8dbe5; border-radius: 10px; background: white; color: #20232d; font: inherit; font-size: .78rem; }
 .google-place-legacy-input:focus { border-color: #7765e8; outline: 2px solid rgba(119,101,232,.15); }
+.google-place-fallback-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.google-place-fallback-form button { min-width: 64px; border: 1px solid #6555d9; border-radius: 10px; background: #6555d9; color: #fff; font-weight: 800; }
 .google-place-search p { margin: 0; color: #777d8b; font-size: .7rem; line-height: 1.45; }
 .google-place-search a { color: #5846c9; font-size: .75rem; font-weight: 800; text-decoration: none; }
 .google-map-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
