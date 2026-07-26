@@ -887,7 +887,7 @@ function App() {
     setTripPhotoPreview('')
     setTripPhotoDate(schedule?.date || selectedScheduleDate || selectedTrip?.startDate || getLocalDateText())
     setTripPhotoCaption('')
-    setTripPhotoPlace(schedule?.place || '')
+    setTripPhotoPlace(schedule?.place || schedule?.title || '')
     setTripPhotoScheduleId(schedule?.id || '')
     setItemMessage('')
     setDialog('trip-photo')
@@ -1750,7 +1750,7 @@ function App() {
                   <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => selectTripPhoto(event.target.files?.[0])} />
                 </label>
                 {tripPhotoPreview && <img className="trip-photo-preview" src={tripPhotoPreview} alt="저장할 여행 사진 미리보기" />}
-                <div className="form-row"><label>촬영일<input type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} value={tripPhotoDate} onChange={(event) => setTripPhotoDate(event.target.value)} /></label><label>연결 일정<select value={tripPhotoScheduleId} onChange={(event) => { const id = event.target.value; setTripPhotoScheduleId(id); const item = schedules.find((schedule) => schedule.id === id); if (item) { setTripPhotoDate(item.date); setTripPhotoPlace(item.place || '') } }}><option value="">일정 연결 안 함</option>{schedules.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.date} · {schedule.title}</option>)}</select></label></div>
+                <div className="form-row"><label>촬영일<input type="date" min={selectedTrip?.startDate} max={selectedTrip?.endDate} value={tripPhotoDate} onChange={(event) => setTripPhotoDate(event.target.value)} /></label><label>연결 일정<select value={tripPhotoScheduleId} onChange={(event) => { const id = event.target.value; setTripPhotoScheduleId(id); const item = schedules.find((schedule) => schedule.id === id); if (item) { setTripPhotoDate(item.date); setTripPhotoPlace(item.place || item.title || '') } }}><option value="">일정 연결 안 함</option>{schedules.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.date} · {schedule.title}</option>)}</select></label></div>
                 <label>장소<input value={tripPhotoPlace} onChange={(event) => setTripPhotoPlace(event.target.value)} placeholder="예: 후쿠오카 타워" /></label>
                 <label>사진 메모<input value={tripPhotoCaption} onChange={(event) => setTripPhotoCaption(event.target.value)} maxLength="200" placeholder="그날의 기억을 짧게 남겨보세요" /></label>
                 {itemMessage && <p className="auth-message" role="status">{itemMessage}</p>}
