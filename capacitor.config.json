@@ -1,11 +1,7 @@
 {
-  "appId": "com.james.hanoitrip",
+  "appId": "com.jys7867.travelon",
   "appName": "여행온",
   "webDir": "dist",
-  "server": {
-    "url": "https://travel-app-six-opal.vercel.app",
-    "errorPath": "index.html"
-  },
   "android": {
     "backgroundColor": "#1b1b23"
   },

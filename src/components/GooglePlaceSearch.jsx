@@ -1,227 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-let googleMapsPromise
+const parseGoogleMapsLink = (value) => {
+  const text = value.trim()
+  if (!/^https?:\/\//i.test(text)) throw new Error('Google 지도에서 공유한 링크를 붙여넣어 주세요.')
 
-const loadGoogleMaps = () => {
-  if (window.google?.maps?.places || window.google?.maps?.importLibrary) return Promise.resolve(window.google)
-  if (!apiKey) return Promise.reject(new Error('Google Maps API 키가 설정되지 않았습니다.'))
-  if (!googleMapsPromise) {
-    googleMapsPromise = new Promise((resolve, reject) => {
-      const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&v=weekly&loading=async`
-      script.async = true
-      script.onload = () => resolve(window.google)
-      script.onerror = () => reject(new Error('Google 장소 검색을 불러오지 못했습니다.'))
-      document.head.appendChild(script)
-    })
+  const url = new URL(text)
+  const isGoogleMaps = /(^|\.)google\.[a-z.]+$/i.test(url.hostname)
+    || /(^|\.)maps\.app\.goo\.gl$/i.test(url.hostname)
+    || /(^|\.)goo\.gl$/i.test(url.hostname)
+  if (!isGoogleMaps) throw new Error('Google 지도 공유 링크만 사용할 수 있습니다.')
+
+  const decoded = decodeURIComponent(text.replace(/\+/g, ' '))
+  const placeMatch = decoded.match(/\/maps\/place\/([^/@?]+)/i)
+  const atMatch = decoded.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
+  const dataMatch = decoded.match(/!3d(-?\d+(?:\.\d+))!4d(-?\d+(?:\.\d+))/)
+  const query = url.searchParams.get('query') || url.searchParams.get('q') || ''
+  const queryMatch = query.match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/)
+  const coordinates = atMatch || dataMatch || queryMatch
+
+  return {
+    googlePlaceId: url.searchParams.get('query_place_id') || '',
+    googleMapsUrl: text,
+    name: placeMatch?.[1]?.trim() || '',
+    address: '',
+    latitude: coordinates ? Number(coordinates[1]) : '',
+    longitude: coordinates ? Number(coordinates[2]) : '',
   }
-  return googleMapsPromise
 }
 
 export function GooglePlaceSearch({ onSelect }) {
-  const containerRef = useRef(null)
-  const mapContainerRef = useRef(null)
-  const mapRef = useRef(null)
-  const markerRef = useRef(null)
-  const googleRef = useRef(null)
-  const selectedPointRef = useRef(null)
-  const resolveSelectedPointRef = useRef(false)
-  const [mapOpen, setMapOpen] = useState(false)
-  const [mapLoading, setMapLoading] = useState(false)
-  const [message, setMessage] = useState(apiKey ? '장소 이름을 검색하거나 지도에서 직접 선택하세요.' : 'Google Maps API 키 설정 후 자동 검색을 사용할 수 있습니다.')
+  const [query, setQuery] = useState('')
+  const [sharedUrl, setSharedUrl] = useState('')
+  const [message, setMessage] = useState('Google 지도 앱에서 장소를 찾은 뒤 공유 링크를 붙여넣으세요.')
+  const searchUrl = useMemo(
+    () => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query.trim() || '여행 장소')}`,
+    [query],
+  )
 
-  const showPoint = useCallback((google, location, zoom = 16) => {
-    if (!mapRef.current) return
-    selectedPointRef.current = location
-    markerRef.current?.setMap(null)
-    markerRef.current = new google.maps.Marker({ position: location, map: mapRef.current })
-    mapRef.current.panTo(location)
-    mapRef.current.setZoom(zoom)
-  }, [])
-
-  const selectMapLocation = useCallback(async (google, location) => {
-    showPoint(google, location)
-    setMessage('선택한 위치의 주소를 확인하고 있습니다…')
-    let result
+  const applySharedLink = () => {
     try {
-      const response = await new google.maps.Geocoder().geocode({ location })
-      result = response.results?.[0]
-    } catch {
-      // The location itself remains usable if reverse geocoding is unavailable.
+      const place = parseGoogleMapsLink(sharedUrl)
+      onSelect(place)
+      setMessage(place.name || place.latitude !== ''
+        ? '지도 링크에서 확인한 정보를 입력했습니다. 장소명과 주소를 확인해 주세요.'
+        : '단축 지도 링크를 저장했습니다. 장소명과 주소를 직접 입력해 주세요.')
+    } catch (error) {
+      setMessage(error.message)
     }
-    const address = result?.formatted_address || `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`
-    const name = result?.address_components?.[0]?.long_name || '지도에서 선택한 장소'
-    onSelect({
-      googlePlaceId: result?.place_id || '',
-      name,
-      address,
-      latitude: location.lat,
-      longitude: location.lng,
-      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`,
-    })
-    setMessage(result ? '지도에서 장소와 주소를 선택했습니다.' : '위치를 선택했습니다. 주소가 좌표로 입력되었으니 확인해 주세요.')
-  }, [onSelect, showPoint])
+  }
 
-  useEffect(() => {
-    if (!apiKey || !containerRef.current) return undefined
-    let active = true
-    let autocomplete
-    let autocompleteListener
-    let fallbackForm
-    let fallbackSubmit
-
-    loadGoogleMaps()
-      .then(async (google) => {
-        let placesLibrary = google.maps.places
-        if (typeof google.maps.importLibrary === 'function') {
-          placesLibrary = await google.maps.importLibrary('places') || placesLibrary
-        }
-        if (!active || !containerRef.current) return
-        googleRef.current = google
-
-        const applySelectedPlace = (place, fallbackName = '') => {
-          const location = place.location
-            ? { lat: place.location.lat(), lng: place.location.lng() }
-            : place.geometry?.location
-              ? { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() }
-              : null
-          onSelect({
-            googlePlaceId: place.id || place.place_id || '',
-            name: place.displayName || place.name || fallbackName,
-            address: place.formattedAddress || place.formatted_address || '',
-            latitude: location?.lat ?? null,
-            longitude: location?.lng ?? null,
-            googleMapsUrl: place.googleMapsURI || place.url || (location
-              ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`
-              : ''),
-          })
-          if (location) {
-            selectedPointRef.current = location
-            resolveSelectedPointRef.current = false
-            setMapOpen(true)
-            showPoint(google, location)
-          }
-          setMessage('검색한 장소를 선택했습니다. 지도 핀과 입력 내용을 확인하세요.')
-        }
-
-        if (placesLibrary?.PlaceAutocompleteElement) {
-          autocomplete = new placesLibrary.PlaceAutocompleteElement()
-          autocomplete.setAttribute('aria-label', 'Google 장소 검색')
-          autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
-            const place = placePrediction.toPlace()
-            await place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI'] })
-            applySelectedPlace(place, placePrediction.text?.toString() || '')
-          })
-          containerRef.current.replaceChildren(autocomplete)
-        } else if (placesLibrary?.Autocomplete) {
-          const input = document.createElement('input')
-          input.type = 'search'
-          input.className = 'google-place-legacy-input'
-          input.placeholder = '장소명이나 주소를 검색하세요'
-          input.setAttribute('aria-label', 'Google 장소 검색')
-          containerRef.current.replaceChildren(input)
-          autocomplete = new placesLibrary.Autocomplete(input, {
-            fields: ['place_id', 'name', 'formatted_address', 'geometry', 'url'],
-          })
-          autocompleteListener = autocomplete.addListener('place_changed', () => {
-            applySelectedPlace(autocomplete.getPlace(), input.value)
-          })
-        } else {
-          fallbackForm = document.createElement('form')
-          fallbackForm.className = 'google-place-fallback-form'
-          const input = document.createElement('input')
-          input.type = 'search'
-          input.className = 'google-place-legacy-input'
-          input.placeholder = '장소명이나 주소를 입력하세요'
-          input.setAttribute('aria-label', 'Google 장소 검색')
-          const button = document.createElement('button')
-          button.type = 'submit'
-          button.textContent = '검색'
-          fallbackForm.append(input, button)
-          containerRef.current.replaceChildren(fallbackForm)
-          fallbackSubmit = async (event) => {
-            event.preventDefault()
-            const query = input.value.trim()
-            if (!query) {
-              setMessage('찾을 장소명이나 주소를 입력해 주세요.')
-              return
-            }
-            setMessage('Google 지도에서 장소를 찾고 있습니다…')
-            try {
-              const response = await new google.maps.Geocoder().geocode({ address: query })
-              const result = response.results?.[0]
-              if (!result) {
-                setMessage('검색 결과가 없습니다. 도시 이름과 장소명을 함께 입력해 주세요.')
-                return
-              }
-              applySelectedPlace(result, query)
-            } catch {
-              setMessage('장소를 찾지 못했습니다. 도시 이름과 장소명을 함께 입력해 주세요.')
-            }
-          }
-          fallbackForm.addEventListener('submit', fallbackSubmit)
-          setMessage('장소명을 입력해 Google 지도에서 검색하거나 지도에서 직접 선택하세요.')
-        }
-      })
-      .catch((error) => setMessage(error.message))
-
-    return () => {
-      active = false
-      autocompleteListener?.remove()
-      autocomplete?.remove?.()
-      if (fallbackForm && fallbackSubmit) fallbackForm.removeEventListener('submit', fallbackSubmit)
-    }
-  }, [onSelect, showPoint])
-
-  useEffect(() => {
-    if (!mapOpen || !mapContainerRef.current || !apiKey) return undefined
-    let active = true
-    let clickListener
-    setMapLoading(true)
-    loadGoogleMaps()
-      .then(async (google) => {
-        if (google.maps.importLibrary) await google.maps.importLibrary('maps')
-        if (!active || !mapContainerRef.current) return
-        googleRef.current = google
-        const initialPoint = selectedPointRef.current || { lat: 20, lng: 105 }
-        mapRef.current = new google.maps.Map(mapContainerRef.current, {
-          center: initialPoint,
-          zoom: selectedPointRef.current ? 16 : 4,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          clickableIcons: true,
-        })
-        if (selectedPointRef.current) {
-          if (resolveSelectedPointRef.current) {
-            resolveSelectedPointRef.current = false
-            selectMapLocation(google, selectedPointRef.current)
-          } else {
-            showPoint(google, selectedPointRef.current)
-          }
-        }
-        clickListener = mapRef.current.addListener('click', (event) => {
-          const lat = event.latLng?.lat()
-          const lng = event.latLng?.lng()
-          if (Number.isFinite(lat) && Number.isFinite(lng)) selectMapLocation(google, { lat, lng })
-        })
-        setMapLoading(false)
-      })
-      .catch((error) => {
-        setMapLoading(false)
-        setMessage(error.message)
-      })
-    return () => {
-      active = false
-      clickListener?.remove()
-      markerRef.current?.setMap(null)
-      markerRef.current = null
-      mapRef.current = null
-    }
-  }, [mapOpen, selectMapLocation, showPoint])
-
-  const selectCurrentLocation = () => {
+  const saveCurrentLocation = () => {
     if (!navigator.geolocation) {
       setMessage('이 기기에서는 현재 위치를 사용할 수 없습니다.')
       return
@@ -229,14 +57,19 @@ export function GooglePlaceSearch({ onSelect }) {
     setMessage('현재 위치를 확인하고 있습니다…')
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        const location = { lat: coords.latitude, lng: coords.longitude }
-        selectedPointRef.current = location
-        resolveSelectedPointRef.current = true
-        setMapOpen(true)
-        if (googleRef.current && mapRef.current) {
-          resolveSelectedPointRef.current = false
-          selectMapLocation(googleRef.current, location)
-        }
+        const latitude = coords.latitude
+        const longitude = coords.longitude
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+        onSelect({
+          googlePlaceId: '',
+          googleMapsUrl,
+          name: '현재 위치',
+          address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+          latitude,
+          longitude,
+        })
+        setSharedUrl(googleMapsUrl)
+        setMessage('현재 위치와 지도 링크를 입력했습니다.')
       },
       () => setMessage('위치 권한을 허용한 뒤 다시 시도해 주세요.'),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
@@ -244,19 +77,36 @@ export function GooglePlaceSearch({ onSelect }) {
   }
 
   return (
-    <div className="google-place-search">
-      <div ref={containerRef} />
-      {apiKey && <div className="google-map-actions">
-        <button type="button" onClick={() => setMapOpen((current) => !current)}>{mapOpen ? '지도 닫기' : '🗺️ 지도에서 선택'}</button>
-        <button type="button" onClick={selectCurrentLocation}>◎ 현재 위치</button>
-      </div>}
-      {mapOpen && <div className="google-map-picker">
-        {mapLoading && <span>지도를 불러오는 중…</span>}
-        <div ref={mapContainerRef} aria-label="장소를 선택하는 Google 지도" />
-        <small>지도를 움직이고 원하는 지점을 누르면 장소와 좌표가 입력됩니다.</small>
-      </div>}
+    <div className="google-place-search external-map-search">
+      <label>
+        <span>Google 지도에서 검색</span>
+        <div className="google-place-fallback-form">
+          <input
+            type="search"
+            className="google-place-legacy-input"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="예: Pizza 4P's Au Co Hanoi"
+          />
+          <a className="external-map-button" href={searchUrl} target="_blank" rel="noreferrer">지도 열기</a>
+        </div>
+      </label>
+      <label>
+        <span>Google 지도 공유 링크</span>
+        <div className="google-place-fallback-form">
+          <input
+            type="url"
+            className="google-place-legacy-input"
+            value={sharedUrl}
+            onChange={(event) => setSharedUrl(event.target.value)}
+            placeholder="Google 지도에서 공유한 링크 붙여넣기"
+          />
+          <button type="button" onClick={applySharedLink}>링크 적용</button>
+        </div>
+      </label>
+      <button className="current-location-button" type="button" onClick={saveCurrentLocation}>◎ 현재 위치 저장</button>
       <p>{message}</p>
-      {!apiKey && <a href="https://www.google.com/maps/search/" target="_blank" rel="noreferrer">Google 지도에서 먼저 찾아보기</a>}
+      <small className="external-map-cost-note">Google Maps Platform API를 호출하지 않는 무료 연결 방식입니다.</small>
     </div>
   )
 }

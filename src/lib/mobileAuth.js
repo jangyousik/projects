@@ -3,7 +3,7 @@ import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase'
 
-export const mobileAuthRedirectUrl = 'https://travel-app-six-opal.vercel.app'
+export const mobileAuthRedirectUrl = 'com.jys7867.travelon://auth/callback'
 
 const completeAuthFromUrl = async (url) => {
   if (!url || !supabase) return
