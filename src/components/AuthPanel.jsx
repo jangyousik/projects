@@ -30,6 +30,7 @@ export function AuthPanel({ session, onClose }) {
       options: {
         redirectTo: getAuthRedirectUrl(),
         skipBrowserRedirect: isNative,
+        queryParams: { prompt: 'select_account' },
       },
     })
 
