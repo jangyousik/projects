@@ -1,4 +1,4 @@
-package com.james.hanoitrip;
+package com.jys7867.travelon;
 
 import android.content.Context;
 import android.content.SharedPreferences;

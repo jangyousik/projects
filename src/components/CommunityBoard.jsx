@@ -94,6 +94,10 @@ export function CommunityBoard({ session }) {
       <div className="form-row"><label>분류<select name="category"><option value="tip">여행 팁</option><option value="question">질문</option><option value="review">후기</option><option value="companion">동행</option></select></label><label>여행지<input name="destination" placeholder="예: 후쿠오카" /></label></div>
       <label>제목<input name="title" minLength="2" maxLength="120" required /></label>
       <label>내용<textarea name="content" minLength="2" maxLength="4000" required placeholder="예약번호, 전화번호 등 개인정보는 적지 마세요." /></label>
+      <label className="community-policy-consent">
+        <input type="checkbox" required />
+        <span><a href="/terms.html" target="_blank" rel="noreferrer">커뮤니티 운영정책</a>을 확인했으며 개인정보·불법정보·괴롭힘·광고성 콘텐츠를 게시하지 않겠습니다.</span>
+      </label>
       <button className="dialog-submit" type="submit">게시하기</button>
     </form>}
     {message && <p className="auth-message" role="status">{message}</p>}

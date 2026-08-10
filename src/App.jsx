@@ -7,7 +7,9 @@ import { GooglePlaceSearch } from './components/GooglePlaceSearch'
 import { TripLiveTools } from './components/TripLiveTools'
 import { PersonalAiSettings } from './components/PersonalAiSettings'
 import { CommunityBoard } from './components/CommunityBoard'
+import { AccountSafety } from './components/AccountSafety'
 import { TripEssentials } from './components/TripEssentials'
+import { GettingStarted, SAMPLE_TRIP } from './components/GettingStarted'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { registerMobileAuth } from './lib/mobileAuth'
 
@@ -256,13 +258,14 @@ function App() {
   const [tripFilter, setTripFilter] = useState('all')
   const [tripsLoading, setTripsLoading] = useState(false)
   const [tripMessage, setTripMessage] = useState('')
+  const [sampleCopying, setSampleCopying] = useState(false)
   const [itemLoading, setItemLoading] = useState(false)
   const [itemMessage, setItemMessage] = useState('')
   const [editingItem, setEditingItem] = useState(null)
   const [excelPreview, setExcelPreview] = useState([])
   const [excelFileName, setExcelFileName] = useState('')
   const [placeDraft, setPlaceDraft] = useState({ name: '', address: '', memo: '', googlePlaceId: '', googleMapsUrl: '', latitude: '', longitude: '' })
-  const [schedulePlaceDraft, setSchedulePlaceDraft] = useState({ place: '', address: '', latitude: '', longitude: '' })
+  const [schedulePlaceDraft, setSchedulePlaceDraft] = useState({ place: '', address: '', latitude: '', longitude: '', googleMapsUrl: '' })
   const [scheduleAgentNote, setScheduleAgentNote] = useState('')
   const [scheduleAgentLoading, setScheduleAgentLoading] = useState(false)
   const [scheduleVoiceListening, setScheduleVoiceListening] = useState(false)
@@ -523,7 +526,7 @@ function App() {
       setItemMessage('보기 전용 멤버는 내용을 추가하거나 변경할 수 없습니다.')
     } else {
       if (type === 'schedule') {
-        setSchedulePlaceDraft({ place: '', address: '', latitude: '', longitude: '' })
+        setSchedulePlaceDraft({ place: '', address: '', latitude: '', longitude: '', googleMapsUrl: '' })
         setScheduleAgentNote('')
       }
       setDialog(type)
@@ -541,7 +544,13 @@ function App() {
       })
     }
     if (type === 'schedule') {
-      setSchedulePlaceDraft({ place: item.place || '', address: item.address || '', latitude: item.latitude ?? '', longitude: item.longitude ?? '' })
+      setSchedulePlaceDraft({
+        place: item.place || '',
+        address: item.address || '',
+        latitude: item.latitude ?? '',
+        longitude: item.longitude ?? '',
+        googleMapsUrl: item.memo?.match(/지도:\s*(https?:\/\/[^\s·]+)/i)?.[1] || '',
+      })
       setScheduleAgentNote('')
     }
     if (type === 'trip') {
@@ -684,12 +693,13 @@ function App() {
   }, [])
 
   const selectScheduleGooglePlace = useCallback((place) => {
-    setSchedulePlaceDraft({
-      place: place.name || '',
-      address: place.address || '',
-      latitude: place.latitude ?? '',
-      longitude: place.longitude ?? '',
-    })
+    setSchedulePlaceDraft((current) => ({
+      place: place.name || current.place,
+      address: place.address || current.address,
+      latitude: place.latitude ?? current.latitude,
+      longitude: place.longitude ?? current.longitude,
+      googleMapsUrl: place.googleMapsUrl || current.googleMapsUrl,
+    }))
   }, [])
 
   const startScheduleVoiceInput = async () => {
@@ -802,7 +812,7 @@ function App() {
         const field = form.elements.namedItem(name)
         if (field) field.value = value
       })
-      setSchedulePlaceDraft({ place: draft.place_name || '', address: draft.address_candidate || '' })
+      setSchedulePlaceDraft({ place: draft.place_name || '', address: draft.address_candidate || '', latitude: '', longitude: '', googleMapsUrl: '' })
       const quotaText = usePersonalAi
         ? ` · 내 ${personalProvider === 'gemini' ? 'Gemini' : 'OpenAI'}로 처리`
         : data?.quota ? ` · 오늘 ${data.quota.remaining}회 남음` : ''
@@ -827,6 +837,9 @@ function App() {
     }
     setItemLoading(true)
     setItemMessage('')
+    const memoText = String(form.get('memo')).trim()
+    const memoWithoutMapLink = memoText.replace(/(?:^|\s*·?\s*)지도:\s*https?:\/\/[^\s·]+/gi, '').trim()
+    const googleMapsUrl = String(form.get('googleMapsUrl')).trim()
     const values = {
         day_date: date,
         start_time: String(form.get('time')) || null,
@@ -835,7 +848,7 @@ function App() {
         address: String(form.get('address')).trim() || null,
         latitude: String(form.get('latitude')).trim() || null,
         longitude: String(form.get('longitude')).trim() || null,
-        memo: String(form.get('memo')).trim() || null,
+        memo: [memoWithoutMapLink, googleMapsUrl && `지도: ${googleMapsUrl}`].filter(Boolean).join(' · ') || null,
         estimated_cost: Number(form.get('estimatedCost') || 0),
         reservation_status: String(form.get('reservationStatus') || 'none'),
         reservation_site: String(form.get('reservationSite')).trim() || null,
@@ -1587,13 +1600,64 @@ function App() {
     }
   }
 
+  const copySampleTrip = async () => {
+    if (!session || !supabase || sampleCopying) {
+      if (!session) setDialog('auth')
+      return
+    }
+    setSampleCopying(true)
+    setTripMessage('')
+    try {
+      const { data: tripData, error: tripError } = await supabase.from('trips').insert({
+        owner_id: session.user.id,
+        title: `${SAMPLE_TRIP.title} (복사본)`,
+        destination: SAMPLE_TRIP.destination,
+        start_date: SAMPLE_TRIP.startDate,
+        end_date: SAMPLE_TRIP.endDate,
+        people: SAMPLE_TRIP.people,
+        currency: SAMPLE_TRIP.currency,
+      }).select('id,owner_id,title,destination,start_date,end_date,people,currency').single()
+      if (tripError) throw tripError
+
+      const scheduleRows = SAMPLE_TRIP.days.flatMap((day) => day.items.map((item, sortOrder) => ({
+        trip_id: tripData.id,
+        day_date: day.date,
+        start_time: item.time,
+        title: item.title,
+        place_name: item.place,
+        memo: item.memo,
+        estimated_cost: item.cost,
+        actual_cost: 0,
+        cost_category: item.category,
+        payment_method: 'either',
+        cost_currency: SAMPLE_TRIP.currency,
+        completed: false,
+        sort_order: sortOrder,
+        reservation_status: 'none',
+        created_by: session.user.id,
+      })))
+      const { error: scheduleError } = await supabase.from('schedule_items').insert(scheduleRows)
+      if (scheduleError) throw scheduleError
+
+      const copiedTrip = { id: tripData.id, ownerId: tripData.owner_id, title: tripData.title, destination: tripData.destination, startDate: tripData.start_date, endDate: tripData.end_date, people: tripData.people, currency: tripData.currency }
+      setTrips((current) => [...current, copiedTrip])
+      setSelectedTripId(copiedTrip.id)
+      setScreen('trip')
+      setTripMessage('샘플 여행을 내 여행으로 복사했습니다.')
+    } catch (error) {
+      setTripMessage(`샘플 여행을 복사하지 못했습니다. ${error.message}`)
+    } finally {
+      setSampleCopying(false)
+    }
+  }
+
   return (
     <div className={`app-shell ${isTripDetail ? 'hanoi-detail-theme' : ''}`}>
       <main>
         <header className="topbar">
           <div>
-            <p className="eyebrow">{isTripDetail ? getTripPhaseLabel(selectedTrip) : screen === 'settings' ? '개인정보와 비용을 지켜요' : screen === 'community' ? '여행자가 여행자를 도와요' : '안녕하세요 👋'}</p>
-            {!isTripDetail && <h1>{screen === 'settings' ? '설정' : screen === 'community' ? '여행온 이야기' : '어디로 떠나볼까요?'}</h1>}
+            <p className="eyebrow">{isTripDetail ? getTripPhaseLabel(selectedTrip) : screen === 'settings' ? '개인정보와 비용을 지켜요' : screen === 'community' ? '여행자가 여행자를 도와요' : screen === 'guide' ? '처음이어도 쉽게' : screen === 'demo' ? '완성된 여행을 미리 보세요' : '안녕하세요 👋'}</p>
+            {!isTripDetail && <h1>{screen === 'settings' ? '설정' : screen === 'community' ? '여행온 이야기' : screen === 'guide' ? '사용법' : screen === 'demo' ? '공개 샘플' : '어디로 떠나볼까요?'}</h1>}
           </div>
           <button className="profile-button" type="button" aria-label="로그인과 내 프로필" onClick={() => setDialog('auth')}>{session ? (session.user.user_metadata?.name?.slice(0, 2) || 'MY') : '로그인'}</button>
         </header>
@@ -1608,14 +1672,19 @@ function App() {
 
         {isTripDetail && <TripLiveTools trip={selectedTrip} />}
 
-        {!session && (
+        {!session && screen === 'home' && (
           <section className="empty-home" aria-labelledby="login-first-title">
             <span aria-hidden="true">✈️</span>
-            <h2 id="login-first-title">로그인하고 여행을 시작하세요</h2>
-            <p>내가 만들었거나 초대받은 여행만 안전하게 표시됩니다.</p>
-            <button type="button" onClick={() => setDialog('auth')}>로그인하기</button>
+            <h2 id="login-first-title">여행온을 미리 둘러보세요</h2>
+            <p>사용법과 완성된 하노이 여행은 로그인 없이도 볼 수 있어요.</p>
+            <div className="guest-actions"><button type="button" onClick={() => setScreen('demo')}>공개 샘플 보기</button><button className="secondary" type="button" onClick={() => setScreen('guide')}>사용법</button></div>
+            <button className="login-link" type="button" onClick={() => setDialog('auth')}>로그인하고 여행 시작</button>
           </section>
         )}
+
+        {(screen === 'guide' || screen === 'demo') && <GettingStarted mode={screen} session={session} copying={sampleCopying} onBack={() => setScreen('home')} onShowDemo={() => setScreen('demo')} onCopy={copySampleTrip} onLogin={() => setDialog('auth')} />}
+
+        {screen === 'home' && session && <section className="welcome-tools" aria-label="여행온 안내"><button type="button" onClick={() => setScreen('demo')}><span>🌏</span><strong>공개 샘플</strong><small>하노이 3박 4일 일정</small></button><button type="button" onClick={() => setScreen('guide')}><span>🧭</span><strong>사용법</strong><small>5단계로 빠르게 시작</small></button></section>}
 
         {screen === 'home' && session && !tripsLoading && trips.length === 0 && (
           <section className="empty-home" aria-labelledby="empty-trip-title">
@@ -1628,7 +1697,12 @@ function App() {
           </section>
         )}
 
-        {screen === 'settings' && session && <PersonalAiSettings />}
+        {screen === 'settings' && session && (
+          <>
+            <PersonalAiSettings />
+            <AccountSafety session={session} onDeleted={() => { setDialog(null); setScreen('home') }} />
+          </>
+        )}
 
         {screen === 'community' && session && <CommunityBoard session={session} />}
 
@@ -1953,6 +2027,7 @@ function App() {
                 <label>주소<input name="address" placeholder="Google 지도에서 선택하면 자동 입력됩니다" value={schedulePlaceDraft.address} onChange={(event) => setSchedulePlaceDraft((current) => ({ ...current, address: event.target.value, latitude: '', longitude: '' }))} /></label>
                 <input type="hidden" name="latitude" value={schedulePlaceDraft.latitude} />
                 <input type="hidden" name="longitude" value={schedulePlaceDraft.longitude} />
+                <input type="hidden" name="googleMapsUrl" value={schedulePlaceDraft.googleMapsUrl} />
                 <label>메모<textarea name="memo" maxLength="300" placeholder="준비물이나 세부 내용을 기록하세요" defaultValue={editingItem?.item.memo || ''} /></label>
                 <div className="form-row"><label>비용 분류<select name="costCategory" defaultValue={editingItem?.item.costCategory || 'other'}><option value="flight">항공</option><option value="accommodation">숙소</option><option value="food">식비</option><option value="transport">교통</option><option value="activity">관광·체험</option><option value="shopping">쇼핑</option><option value="other">기타</option></select></label><label>결제 방법<select name="paymentMethod" defaultValue={editingItem?.item.paymentMethod || 'either'}><option value="cash">현금만</option><option value="card">카드 가능</option><option value="either">현금·카드 모두</option><option value="prepaid">예약·선결제</option></select></label></div>
                 <div className="form-row"><label>예상 비용<input name="estimatedCost" type="number" min="0" step="0.01" inputMode="decimal" defaultValue={editingItem?.item.estimatedCost || 0} /></label><label>통화<select name="costCurrency" defaultValue={editingItem?.item.costCurrency || selectedTrip?.currency || 'VND'}>{CURRENCY_OPTIONS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label></div>

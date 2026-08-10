@@ -21,6 +21,7 @@ supabase/.temp/
 *.jks
 *.keystore
 key.properties
+android/keystore.properties
 
 # Generated Android packages and local previews
 *.apk

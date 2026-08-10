@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">여행온</string>
     <string name="title_activity_main">여행온</string>
-    <string name="package_name">com.james.hanoitrip</string>
-    <string name="custom_url_scheme">com.james.hanoitrip</string>
+    <string name="package_name">com.jys7867.travelon</string>
+    <string name="custom_url_scheme">com.jys7867.travelon</string>
 </resources>
